@@ -13,9 +13,7 @@ This Lua UI runs on monitors or terminals to watch & control your reactor safely
 - **Wireless support**: Control your reactor remotely via wireless modem
 - **One-click reactor control**: Easy ONLINE/OFFLINE toggle button
 - **Intelligent safety system**: Automatic shutdown with optional auto-restart
-- **Independent safety switches**: Enable or disable each safety condition from the right-hand menu
-- **Configurable settings**: Adjust safety thresholds and defaults via `config.lua`
-- **Redstone Control**: Redstone signal into Display computer
+- **Fixed safety limits**: Safety thresholds are hardcoded and cannot be changed in the UI or config
 
 ## 🎨 Status Color Guide
 
@@ -30,26 +28,23 @@ This Lua UI runs on monitors or terminals to watch & control your reactor safely
 
 The system will automatically shut down and restart when these conditions are met:
 
-- **Coolant** < 20%
-- **Fuel** < 5%
+- **Coolant** < 10%
 - **Heated Coolant** > 99%
 - **Waste** > 99%
-- **Damage** > 20%
 
 ### High Danger Shutdown (Manual restart required)
 
 Critical conditions that require your attention:
 
-- **Temperature** > 5000°F
-- **Damage** > 50%
+- **Any reactor damage** (> 0%) triggers an immediate emergency shutdown and requires a manual restart
 
-> **Note**: Auto-restart only happens when ALL normal safety values return to safe ranges.
-> You can change these thresholds in `config.lua`.
+ > **Note**: Normal coolant/heated coolant/waste trips auto-restart once all readings are safe. Any detected damage is an emergency trip and requires a manual restart. Safety thresholds are fixed in `reactor.lua`.
 
 ## 📁 File Structure
 
 ```
-reactor.lua        # Main UI and control logic (Celsius, individual safety switches)
+reactor.lua        # Main UI and fixed safety control logic
+update.lua         # Updates the installed program files from GitHub
 reactor-modem.lua  # Wireless modem bridge (reactor-side)
 functions.lua      # Reactor API adapter and peripheral interface
 config.lua         # User-editable settings
@@ -115,4 +110,4 @@ Both computers must use the same `MODEM_CHANNEL` in `config.lua` (default: `42`)
 
 By default temperature is shown in **Celsius**. To use **Fahrenheit**, set `TEMP_IN_F = true` in `config.lua`.
 
-Each safety condition has its own on/off switch in the right-hand menu. Defaults and thresholds can also be configured in `config.lua`.
+Safety checks are fixed in code: coolant below 10%, heated coolant above 99%, waste above 99%, or any damage above 0%. Fuel and temperature are not safety trip conditions. Burn rate is displayed below the ONLINE/OFFLINE button. Run `update` on the computer to install the latest program files without overwriting your connection settings in `config.lua`.
