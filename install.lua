@@ -49,6 +49,7 @@ print("")
 if mode == "2" then
 	print("Installing Modem Bridge...")
 	shell.run("wget " .. BASE .. "functions.lua functions.lua")
+	shell.run("wget " .. BASE .. "update.lua update.lua")
 	shell.run("wget " .. BASE .. "config.lua config.lua")
 	shell.run("wget " .. BASE .. "reactor-modem.lua reactor-modem.lua")
 	shell.run("cp reactor-modem.lua startup.lua")
