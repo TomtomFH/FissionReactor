@@ -6,8 +6,6 @@ I made this so you don't blow up your reactor a million times like I did. Now yo
 
 This Lua UI runs on monitors or terminals to watch & control your reactor safely with real-time monitoring and automatic safety features.
 
-![Preview Image](images/preview.png)
-
 ## ✨ Key Features
 
 - **Real-time monitoring**: Heat Rate, Damage %, Temperature (°C by default)
@@ -95,8 +93,6 @@ config.lua         # User-editable settings
 
 4. **Reboot** with `Ctrl+R` — the system starts automatically
 
-![Old Installation Demo](images/install_demo.gif)
-_Quick installation process demonstration_
 
 ### Requirements
 
