@@ -315,8 +315,9 @@ local function drawLayout()
 end
 local function draw()
 	w, h = term.getSize()
-	local redrawAll = layoutDirty
-	if layoutDirty then drawLayout() end
+	local dimensionsChanged = prevSnapshot and (w ~= prevSnapshot.w or h ~= prevSnapshot.h)
+	local redrawAll = layoutDirty or dimensionsChanged
+	if redrawAll then layoutDirty = true; drawLayout() end
 	local rightW = max(15, floor(w * 0.23))
 	if w - rightW < 25 then rightW = max(12, w - 25) end
 	local leftW = w - rightW - 1
@@ -344,7 +345,6 @@ local function draw()
 		for k in pairs(snap) do changed[k] = true end
 	end
 	prevSnapshot = snap
-	if changed.w or changed.h then layoutDirty=true; drawLayout() end
 	local resources = {
 		{key='cool', label='Coolant', pct=snap.cool, color=colors.lightBlue},
 		{key='fuel', label='Fuel', pct=snap.fuel, color=colors.gray},
