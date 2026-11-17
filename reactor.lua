@@ -153,8 +153,13 @@ local function fmt(n)
 		return 'n/a'
 	end
 	local rounded = fmtStr('%.2f', abs(n))
-	rounded = rounded:gsub('0+
-
+	rounded = rounded:gsub('0+$', ''):gsub('%.$', '')
+	local whole, fraction = rounded:match('^(%d+)%.?(%d*)$')
+	if not whole then return tostring(n) end
+	whole = whole:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
+	local sign = n < 0 and '-' or ''
+	return sign .. whole .. (fraction ~= '' and ('.' .. fraction) or '')
+end
 local DEG = string.char(176)
 local TEMP_UNIT = TEMP_IN_F and 'F' or 'C'
 
