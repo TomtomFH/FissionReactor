@@ -326,8 +326,10 @@ local function draw()
 	local statusH = max(2, floor(topH / 5))
 	local snap = {
 		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
-		fuel=r.getFuel('percent') or 0, waste=r.getWaste('percent') or 0,
-		cool=r.getCoolant('percent') or 0, hot=r.getHeatedCoolant('percent') or 0,
+		fuel=r.getFuel('percent') or 0, fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
+		waste=r.getWaste('percent') or 0, wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
+		cool=r.getCoolant('percent') or 0, coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
+		hot=r.getHeatedCoolant('percent') or 0, hotAmount=r.getHeatedCoolant(), hotMax=r.getHeatedCoolant('max'),
 		w=w,h=h
 	}
 	local changed = {}
@@ -353,13 +355,20 @@ local function draw()
 	}
 	local boxH = floor(h/4)
 	for i,res in ipairs(resources) do
-		if changed[res.key] or not prevSnapshot then
+		local amountKey = res.key .. 'Amount'
+		local maxKey = res.key .. 'Max'
+		if changed[res.key] or changed[amountKey] or changed[maxKey] or not prevSnapshot then
 			local y = 1 + (i-1)*boxH
 			local bh = (i==4) and (h-y+1) or boxH
 			local areaY = y+1
 			drawBar(1, areaY, leftW, max(1,bh-1), res.pct, res.color)
+			local amount = snap[amountKey]
+			local capacity = snap[maxKey]
+			local exact = (amount ~= nil and capacity ~= nil) and (fmt(amount)..' / '..fmt(capacity)) or (amount ~= nil and fmt(amount) or 'n/a')
+			local pctText = fmtStr('%d%%',floor(res.pct+0.5))
 			drawText(2,y,res.label,colors.white,colors.black,leftW-3)
-			drawText(max(2,leftW-5),y,fmtStr('%d%%',floor(res.pct+0.5)),colors.white,colors.black,5)
+			local valueText = exact .. ' (' .. pctText .. ')'
+			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
 		end
 	end
 	if changed.active or changed.dmg or changed.temp or changed.heatRate then
