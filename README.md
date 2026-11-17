@@ -10,12 +10,13 @@ This Lua UI runs on monitors or terminals to watch & control your reactor safely
 
 ## ✨ Key Features
 
-- **Real-time monitoring**: Heat Rate, Damage %, Temperature (°F or °C)
+- **Real-time monitoring**: Heat Rate, Damage %, Temperature (°C by default)
 - **Resource level bars**: Coolant, Fuel, Heated Coolant, Waste
 - **Wireless support**: Control your reactor remotely via wireless modem
 - **One-click reactor control**: Easy ONLINE/OFFLINE toggle button
 - **Intelligent safety system**: Automatic shutdown with optional auto-restart
-- **Configurable settings**: Adjust safety thresholds via `config.lua`
+- **Independent safety switches**: Enable or disable each safety condition from the right-hand menu
+- **Configurable settings**: Adjust safety thresholds and defaults via `config.lua`
 - **Redstone Control**: Redstone signal into Display computer
 
 ## 🎨 Status Color Guide
@@ -50,7 +51,7 @@ Critical conditions that require your attention:
 ## 📁 File Structure
 
 ```
-reactor.lua        # Main UI and control logic
+reactor.lua        # Main UI and control logic (Celsius, individual safety switches)
 reactor-modem.lua  # Wireless modem bridge (reactor-side)
 functions.lua      # Reactor API adapter and peripheral interface
 config.lua         # User-editable settings
@@ -116,4 +117,6 @@ Both computers must use the same `MODEM_CHANNEL` in `config.lua` (default: `42`)
 
 ### Temperature Unit
 
-By default temperature is shown in **Fahrenheit**. To use **Celsius**, set `TEMP_IN_F = false` in `config.lua`.
+By default temperature is shown in **Celsius**. To use **Fahrenheit**, set `TEMP_IN_F = true` in `config.lua`.
+
+Each safety condition has its own on/off switch in the right-hand menu. Defaults and thresholds can also be configured in `config.lua`.
