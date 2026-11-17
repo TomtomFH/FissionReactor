@@ -106,23 +106,17 @@ local buttons = {}
 local newButtons = {}
 local w, h = term.getSize()
 
-local safetyMode = true
 local safetyShutdown = false
 local safetyHighDanger = false
 local safetyLastReason = nil
-local SAFETY_TEMP_F = tonumber(config.SAFETY_TEMP_F) or 5000
-local SAFETY_DMG_HIGH = tonumber(config.SAFETY_DMG_HIGH) or 50
-local SAFETY_COOLANT_MIN = tonumber(config.SAFETY_COOLANT_MIN) or 20
-local SAFETY_FUEL_MIN = tonumber(config.SAFETY_FUEL_MIN) or 5
-local SAFETY_HEATED_MAX = tonumber(config.SAFETY_HEATED_MAX) or 99
-local SAFETY_WASTE_MAX = tonumber(config.SAFETY_WASTE_MAX) or 99
-local SAFETY_DMG_WARN = tonumber(config.SAFETY_DMG_WARN) or 20
-local SAFETY_RESTART_COOLANT_MIN = tonumber(config.SAFETY_RESTART_COOLANT_MIN) or 15
-local SAFETY_RESTART_FUEL_MIN = tonumber(config.SAFETY_RESTART_FUEL_MIN) or 5
-local SAFETY_RESTART_HEATED_MAX = tonumber(config.SAFETY_RESTART_HEATED_MAX) or 99
-local SAFETY_RESTART_WASTE_MAX = tonumber(config.SAFETY_RESTART_WASTE_MAX) or 99
-local SAFETY_RESTART_DMG_MAX = tonumber(config.SAFETY_RESTART_DMG_MAX) or 20
-local SAFETY_RESTART_TEMP_MAX = tonumber(config.SAFETY_RESTART_TEMP_MAX) or SAFETY_TEMP_F
+
+-- Fixed safety limits: intentionally not configurable from config.lua or the UI.
+local SAFETY_COOLANT_MIN = 10
+local SAFETY_HEATED_MAX = 99
+local SAFETY_WASTE_MAX = 99
+local SAFETY_RESTART_COOLANT_MIN = 10
+local SAFETY_RESTART_HEATED_MAX = 99
+local SAFETY_RESTART_WASTE_MAX = 99
 
 local function resetSafetyShutdown()
 	safetyShutdown = false
@@ -237,16 +231,6 @@ end
 
 local layoutDirty = true
 local prevSnapshot = nil
-local safetyChecks = {
-	{ key = 'COOLANT', label = 'Coolant low', enabled = config.SAFETY_ENABLE_COOLANT ~= false },
-	{ key = 'FUEL', label = 'Fuel low', enabled = config.SAFETY_ENABLE_FUEL ~= false },
-	{ key = 'HEATED', label = 'Heated coolant high', enabled = config.SAFETY_ENABLE_HEATED ~= false },
-	{ key = 'WASTE', label = 'Waste high', enabled = config.SAFETY_ENABLE_WASTE ~= false },
-	{ key = 'DMG_WARN', label = 'Damage warning', enabled = config.SAFETY_ENABLE_DMG_WARN ~= false },
-	{ key = 'DMG_HIGH', label = 'Critical damage', enabled = config.SAFETY_ENABLE_DMG_HIGH ~= false },
-	{ key = 'TEMP', label = 'Critical temperature', enabled = config.SAFETY_ENABLE_TEMP ~= false },
-	{ key = 'REDSTONE', label = 'Redstone trip', enabled = config.SAFETY_ENABLE_REDSTONE ~= false },
-}
 local function drawText(x, y, value, fg, bg, width)
 	value = tostring(value or '')
 	term.setCursorPos(x, y)
@@ -297,19 +281,12 @@ local function drawLayout()
 		newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn}
 	end
 	add('onoff', rightX, 1, rightW, statusH, toggleOnOff)
-	drawText(rightX + 1, statusH + 2, 'Heat Rate:', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, statusH + 3, 'Damage:', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, statusH + 4, 'Temp:', colors.white, colors.gray, rightW - 2)
-	local listY = topH + 1
-	drawText(rightX + 1, listY, 'Safety checks', colors.white, colors.gray, rightW - 2)
-	local rowY = listY + 1
-	for i, check in ipairs(safetyChecks) do
-		local id = 'safety_' .. check.key
-		add(id, rightX + 1, rowY + i - 1, rightW - 2, 1, function()
-			check.enabled = not check.enabled
-			layoutDirty = true
-		end)
-	end
+	drawText(rightX + 1, statusH + 2, 'Burn Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 3, 'Heat Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
 	buttons = newButtons
 	layoutDirty = false
 end
@@ -326,6 +303,7 @@ local function draw()
 	local statusH = max(2, floor(topH / 5))
 	local snap = {
 		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
+		burnRate=r.getBurnRate(),
 		fuel=r.getFuel('percent') or 0, fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
 		waste=r.getWaste('percent') or 0, wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
 		cool=r.getCoolant('percent') or 0, coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
@@ -371,23 +349,16 @@ local function draw()
 			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
 		end
 	end
-	if changed.active or changed.dmg or changed.temp or changed.heatRate then
+	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
 		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
 		for yy=0,statusH-1 do
 			term.setCursorPos(rightX,1+yy); term.setBackgroundColor(btnColor); term.write(string.rep(' ',rightW))
 		end
 		local statusTxt = snap.active and 'ONLINE' or 'OFFLINE'
 		drawText(rightX+floor((rightW-#statusTxt)/2),1+floor(statusH/2),statusTxt,colors.white,btnColor,rightW)
-		drawText(rightX+1,statusH+2,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
-		drawText(rightX+1,statusH+3,'Damage: '..(snap.dmg and (round(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
-		local t=convertTemp(snap.temp)
-		drawText(rightX+1,statusH+4,'Temp: '..(t and (fmt(t)..DEG..TEMP_UNIT) or 'n/a'),colors.white,colors.gray,rightW-2)
-	end
-	local listY = topH+1
-	for i,check in ipairs(safetyChecks) do
-		local y=listY+i
-		local label=(check.enabled and '[x] ' or '[ ] ')..check.label
-		drawText(rightX+1,y,label,check.enabled and colors.lime or colors.lightGray,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+2,'Burn Rate: '..(snap.burnRate and (fmt(snap.burnRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+3,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+4,'Damage: '..(snap.dmg ~= nil and (fmt(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
 	end
 	term.setBackgroundColor(colors.black)
 end
@@ -421,59 +392,44 @@ local function autoRedraw()
 	while true do
 		local status = r.getStatus()
 
-		if safetyMode then
-			local coolant = r.getCoolant('percent') or 0
-			local fuel = r.getFuel('percent') or 0
-			local heated = r.getHeatedCoolant('percent') or 0
-			local waste = r.getWaste('percent') or 0
-			local tempK = r.getTemp() or 0
-			local tempF = kelvinToF(tempK) or 0
-			local dmg = r.getDamage() or 0
+		local coolant = r.getCoolant('percent') or 0
+		local heated = r.getHeatedCoolant('percent') or 0
+		local waste = r.getWaste('percent') or 0
+		local dmg = r.getDamage() or 0
 
-			if status then
-				local reason, highDanger = nil, false
-				if safetyChecks[6].enabled and dmg > SAFETY_DMG_HIGH then
-					reason, highDanger = 'Damage >' .. SAFETY_DMG_HIGH .. '%', true
-				elseif safetyChecks[7].enabled and tempF > SAFETY_TEMP_F then
-					reason, highDanger = 'Temp >' .. SAFETY_TEMP_F .. 'F', true
-				elseif safetyChecks[1].enabled and coolant < SAFETY_COOLANT_MIN then
-					reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
-				elseif safetyChecks[2].enabled and fuel < SAFETY_FUEL_MIN then
-					reason = 'Fuel <' .. SAFETY_FUEL_MIN .. '%'
-				elseif safetyChecks[3].enabled and heated > SAFETY_HEATED_MAX then
-					reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
-				elseif safetyChecks[4].enabled and waste > SAFETY_WASTE_MAX then
-					reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
-				elseif safetyChecks[5].enabled and dmg > SAFETY_DMG_WARN then
-					reason = 'Damage >' .. SAFETY_DMG_WARN .. '%'
-				elseif safetyChecks[8].enabled and isRedstoneTriggered() then
-					reason = 'Redstone signal'
-				end
-				if reason then
-					r.setStatus(false)
-					safetyShutdown = true
-					safetyHighDanger = highDanger
-					safetyLastReason = reason
-					status = false
-				end
-			else
-				if safetyShutdown and (not safetyHighDanger) then
-					local allSafe = (not safetyChecks[1].enabled or coolant >= SAFETY_RESTART_COOLANT_MIN)
-						and (not safetyChecks[2].enabled or fuel >= SAFETY_RESTART_FUEL_MIN)
-						and (not safetyChecks[3].enabled or heated <= SAFETY_RESTART_HEATED_MAX)
-						and (not safetyChecks[4].enabled or waste <= SAFETY_RESTART_WASTE_MAX)
-						and (not safetyChecks[7].enabled or tempF <= SAFETY_RESTART_TEMP_MAX)
-						and (not (safetyChecks[5].enabled or safetyChecks[6].enabled) or dmg <= SAFETY_RESTART_DMG_MAX)
-						and (not safetyChecks[8].enabled or not isRedstoneTriggered())
-					if allSafe then
-						resetSafetyShutdown()
-						r.setStatus(true)
-						status = true
-					end
-				end
+		if status then
+			local reason = nil
+			if dmg > 0 then
+				reason = 'Damage detected'
+			elseif coolant < SAFETY_COOLANT_MIN then
+				reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
+			elseif heated > SAFETY_HEATED_MAX then
+				reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
+			elseif waste > SAFETY_WASTE_MAX then
+				reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
+			end
+
+			if reason then
+				r.setStatus(false)
+				safetyShutdown = true
+				-- Damage is an emergency trip: require a manual restart after inspection.
+				safetyHighDanger = dmg > 0
+				safetyLastReason = reason
+				status = false
+			end
+		elseif safetyShutdown and not safetyHighDanger then
+			local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
+				and heated <= SAFETY_RESTART_HEATED_MAX
+				and waste <= SAFETY_RESTART_WASTE_MAX
+				and dmg <= 0
+			if allSafe then
+				resetSafetyShutdown()
+				r.setStatus(true)
+				status = true
 			end
 		end
-		draw();
+
+		draw()
 		osSleep(REFRESH_INTERVAL)
 	end
 end
