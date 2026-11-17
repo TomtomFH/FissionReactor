@@ -229,6 +229,15 @@ local function toggleOnOff()
 	end
 end
 
+local function runUpdater()
+	if not shell or not shell.run then return end
+	shell.run("update")
+end
+
+local function rebootComputer()
+	_G.os.reboot()
+end
+
 local layoutDirty = true
 local prevSnapshot = nil
 local function drawText(x, y, value, fg, bg, width)
@@ -288,6 +297,17 @@ local function drawLayout()
 	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
+
+	local updateY = topH + 7
+	local rebootY = topH + 9
+	if rebootY > h then
+		updateY = h - 2
+		rebootY = h
+	end
+	add('update', rightX + 1, updateY, rightW - 2, 1, runUpdater)
+	add('reboot', rightX + 1, rebootY, rightW - 2, 1, rebootComputer)
+	drawBtn({x=rightX + 1, y=updateY, w=rightW - 2, h=1, l='UPDATE'}, nil, colors.blue, colors.white)
+	drawBtn({x=rightX + 1, y=rebootY, w=rightW - 2, h=1, l='REBOOT'}, nil, colors.red, colors.white)
 	buttons = newButtons
 	layoutDirty = false
 end
