@@ -4,6 +4,8 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
+local VERSION = '1.0.0'
+local VERSION_STATUS = 'CHECKING'
 
 local term = _G.term
 local colors = _G.colors or _G.colours
@@ -294,9 +296,11 @@ local function drawLayout()
 	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 5, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 6, 'Update: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
 
-	local updateY = topH + 7
-	local rebootY = topH + 9
+	local updateY = topH + 8
+	local rebootY = topH + 10
 	if rebootY > h then
 		updateY = h - 2
 		rebootY = h
@@ -454,6 +458,31 @@ local function autoRedraw()
 	end
 end
 
+local function versionChecker()
+	while true do
+		local latest = nil
+		local ok, response = pcall(function()
+			if not http or not http.get then return nil end
+			return http.get('https://raw.githubusercontent.com/TomtomFH/FissionReactor/refs/heads/main/version.txt', nil, true)
+		end)
+		if ok and response then
+			latest = response.readAll()
+			response.close()
+			if latest then latest = latest:gsub('%s+', '') end
+		end
+		if latest == VERSION then
+			VERSION_STATUS = 'CURRENT'
+		elseif latest then
+			VERSION_STATUS = 'UPDATE AVAILABLE'
+		else
+			VERSION_STATUS = 'UNKNOWN'
+		end
+		layoutDirty = true
+		draw()
+		osSleep(300)
+	end
+end
+
 local function modemListener()
 	while true do
 		local _, _, ch, _, msg = _G.os.pullEvent('modem_message')
@@ -466,9 +495,9 @@ end
 draw()
 if parallel and parallel.waitForAny then
 	if IS_WIRELESS then
-		parallel.waitForAny(autoRedraw, inputLoop, modemListener)
+		parallel.waitForAny(autoRedraw, inputLoop, modemListener, versionChecker)
 	else
-		parallel.waitForAny(autoRedraw, inputLoop)
+		parallel.waitForAny(autoRedraw, inputLoop, versionChecker)
 	end
 else
 	autoRedraw()
