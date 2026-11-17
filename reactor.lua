@@ -3,7 +3,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
-local TEMP_IN_F = config.TEMP_IN_F ~= false -- default true
+local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
 
 local term = _G.term
 local colors = _G.colors or _G.colours
@@ -103,6 +103,7 @@ local REDSTONE_OFF_LEVEL = tonumber(config.REDSTONE_OFF_LEVEL)
 local RS_SIDES = { 'top', 'bottom', 'left', 'right', 'front', 'back' }
 local rs = _G.rs or _G.redstone
 local buttons = {}
+local newButtons = {}
 local w, h = term.getSize()
 
 local safetyMode = true
@@ -236,306 +237,160 @@ end
 
 local function toggleSafetyMode()
 	safetyMode = not safetyMode
-	if not safetyMode then
-		resetSafetyShutdown()
-	end
+	if not safetyMode then resetSafetyShutdown() end
+	layoutDirty = true
 end
 
-local firstDraw = true
+local layoutDirty = true
 local prevSnapshot = nil
-local function draw()
-	if firstDraw then
+local safetyChecks = {
+	{ key = 'COOLANT', label = 'Coolant low', enabled = config.SAFETY_ENABLE_COOLANT ~= false },
+	{ key = 'FUEL', label = 'Fuel low', enabled = config.SAFETY_ENABLE_FUEL ~= false },
+	{ key = 'HEATED', label = 'Heated coolant high', enabled = config.SAFETY_ENABLE_HEATED ~= false },
+	{ key = 'WASTE', label = 'Waste high', enabled = config.SAFETY_ENABLE_WASTE ~= false },
+	{ key = 'DMG_WARN', label = 'Damage warning', enabled = config.SAFETY_ENABLE_DMG_WARN ~= false },
+	{ key = 'DMG_HIGH', label = 'Critical damage', enabled = config.SAFETY_ENABLE_DMG_HIGH ~= false },
+	{ key = 'TEMP', label = 'Critical temperature', enabled = config.SAFETY_ENABLE_TEMP ~= false },
+	{ key = 'REDSTONE', label = 'Redstone trip', enabled = config.SAFETY_ENABLE_REDSTONE ~= false },
+}
+local function drawText(x, y, value, fg, bg, width)
+	value = tostring(value or '')
+	term.setCursorPos(x, y)
+	term.setTextColor(fg or colors.white)
+	term.setBackgroundColor(bg or colors.black)
+	if width then value = value:sub(1, width) end
+	term.write(value)
+end
+local function drawBar(x, y, width, height, pct, fill)
+	pct = math.max(0, math.min(100, tonumber(pct) or 0))
+	local filled = floor(width * pct / 100 + 0.5)
+	for row = 0, height - 1 do
+		term.setCursorPos(x, y + row)
 		term.setBackgroundColor(colors.black)
-		term.clear()
-		firstDraw = false
-	end
-
-	w, h = term.getSize()
-	local snap = {
-		active = r.getStatus(),
-		dmg = r.getDamage(),
-		temp = r.getTemp(),
-		heatRate = r.getHeatingRate(),
-		br = r.getBurnRate(),
-		brMax = r.getBurnRate('max'),
-		brPct = r.getBurnRate('percent') or 0,
-		fuelPct = r.getFuel('percent') or 0,
-		wastePct = r.getWaste('percent') or 0,
-		coolPct = r.getCoolant('percent') or 0,
-		hotPct = r.getHeatedCoolant('percent') or 0,
-		w = w,
-		h = h
-	}
-	local changed = false
-	if not prevSnapshot then
-		changed = true
-	else
-		for k, v in pairs(snap) do
-			local pv = prevSnapshot[k]
-			if type(v) == 'number' and type(pv) == 'number' then
-				if abs(v - pv) > 0.01 then
-					changed = true
-					break
-				end
-			elseif v ~= pv then
-				changed = true;
-				break
-			end
+		term.write(string.rep(' ', width))
+		if filled > 0 then
+			term.setCursorPos(x, y + row)
+			term.setBackgroundColor(fill)
+			term.write(string.rep(' ', filled))
 		end
 	end
-	if not changed then
-		return
+	term.setBackgroundColor(colors.black)
+end
+local function drawLayout()
+	w, h = term.getSize()
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local boxH = floor(h / 4)
+	for i, title in ipairs({'Coolant', 'Fuel', 'Heated Coolant', 'Waste'}) do
+		local y = 1 + (i - 1) * boxH
+		drawText(2, y, title, colors.white, colors.black, leftW - 2)
+	end
+	local topH = floor(h / 2)
+	local bottomH = h - topH
+	term.setBackgroundColor(colors.gray)
+	for y = 1, h do
+		term.setCursorPos(rightX, y)
+		term.write(string.rep(' ', rightW))
+	end
+	term.setBackgroundColor(colors.black)
+	local statusH = max(2, floor(topH / 5))
+	newButtons = {}
+	local function add(id, x, y, bw, bh, fn)
+		newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn}
+	end
+	add('onoff', rightX, 1, rightW, statusH, toggleOnOff)
+	drawText(rightX + 1, statusH + 2, 'Heat Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 3, 'Damage:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 4, 'Temp:', colors.white, colors.gray, rightW - 2)
+	local listY = topH + 1
+	drawText(rightX + 1, listY, 'Safety checks', colors.white, colors.gray, rightW - 2)
+	local rowY = listY + 1
+	for i, check in ipairs(safetyChecks) do
+		local id = 'safety_' .. check.key
+		add(id, rightX + 1, rowY + i - 1, rightW - 2, 1, function()
+			check.enabled = not check.enabled
+			layoutDirty = true
+		end)
+	end
+	buttons = newButtons
+	layoutDirty = false
+end
+local function draw()
+	w, h = term.getSize()
+	if layoutDirty then drawLayout() end
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local topH = floor(h / 2)
+	local statusH = max(2, floor(topH / 5))
+	local snap = {
+		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
+		fuel=r.getFuel('percent') or 0, waste=r.getWaste('percent') or 0,
+		cool=r.getCoolant('percent') or 0, hot=r.getHeatedCoolant('percent') or 0,
+		w=w,h=h
+	}
+	local changed = {}
+	if not prevSnapshot then
+		for k in pairs(snap) do changed[k] = true end
+	else
+		for k,v in pairs(snap) do
+			local old = prevSnapshot[k]
+			if type(v)=='number' and type(old)=='number' then
+				if abs(v-old)>0.01 then changed[k]=true end
+			elseif v ~= old then changed[k]=true end
+		end
 	end
 	prevSnapshot = snap
-
-	local active = snap.active
-	local dmg = snap.dmg
-	local temp = snap.temp
-	local heatRate = snap.heatRate
-	local br = snap.br
-	local brMax = snap.brMax
-	local brPct = snap.brPct
-	local fuelPct = snap.fuelPct
-	local wastePct = snap.wastePct
-	local coolPct = snap.coolPct
-	local hotPct = snap.hotPct
-
-	local rightW = max(15, floor(w * 0.23))
-	if w - rightW < 25 then
-		rightW = max(12, w - 25)
-	end
-	local leftX, gap = 1, 1
-	local leftW = w - rightW - gap
-	local rightX = leftX + leftW + gap
-
-	local newButtons = {}
-	local function newAdd(id, x, y, wid, label, fn, height)
-		newButtons[id] = {
-			x = x,
-			y = y,
-			w = wid,
-			h = height or 1,
-			l = label,
-			fn = fn
-		}
-	end
-
-	local function resourceBox(order, title, pct, col)
-		pct = tonumber(pct) or 0;
-		if pct < 0 then
-			pct = 0
-		elseif pct > 100 then
-			pct = 100
-		end
-		local boxH = floor(h / 4);
-		if boxH < 3 then
-			boxH = 3
-		end
-		local leftover = h - boxH * 4
-		local thisH = boxH + (order == 4 and leftover or 0)
-		local topMargin, bottomMargin = 1, 1
-		local reserved = topMargin + 1 + bottomMargin
-		if thisH < reserved + 1 then
-			if thisH >= 2 then
-				bottomMargin = 0
-				reserved = topMargin + 1
-			end
-			if thisH < 2 then
-				topMargin, bottomMargin, reserved = 0, 0, 1
-			end
-		end
-		local y0 = 1 + (order - 1) * boxH
-		for yy = 0, reserved - 1 do
-			term.setCursorPos(leftX, y0 + yy)
-			term.setBackgroundColor(colors.black)
-			term.write(string.rep(' ', leftW))
-		end
-		term.setCursorPos(leftX + 1, y0 + topMargin)
-		term.setBackgroundColor(colors.black)
-		term.setTextColor(colors.white)
-		term.write(title)
-		local pctTxt = fmtStr('%d%%', floor(pct + 0.5))
-		local px = leftX + leftW - #pctTxt
-		if px <= leftX + #title + 1 then
-			px = leftX + #title + 2
-		end
-		term.setCursorPos(px, y0 + topMargin)
-		term.write(pctTxt)
-		local areaTop = y0 + reserved
-		local areaH = thisH - reserved
-		local wasteBottomMargin = (order == 4) and 1 or 0
-		if wasteBottomMargin > 0 and areaH > wasteBottomMargin then
-			areaH = areaH - wasteBottomMargin
-		end
-		local fillW = floor(leftW * pct / 100 + 0.5);
-		if fillW > leftW then
-			fillW = leftW
-		end
-		for yy = 0, areaH - 1 do
-			term.setCursorPos(leftX, areaTop + yy)
-			term.setBackgroundColor(colors.black)
-			term.write(string.rep(' ', leftW))
-			if fillW > 0 then
-				term.setCursorPos(leftX, areaTop + yy)
-				term.setBackgroundColor(col)
-				term.write(string.rep(' ', fillW))
-			end
-		end
-		if wasteBottomMargin > 0 then
-			for i = 0, wasteBottomMargin - 1 do
-				term.setCursorPos(leftX, areaTop + areaH + i)
-				term.setBackgroundColor(colors.black)
-				term.write(string.rep(' ', leftW))
-			end
-		end
-	end
-
-	resourceBox(1, 'Coolant', coolPct, colors.lightBlue)
-	resourceBox(2, 'Fuel', fuelPct, colors.gray)
-	resourceBox(3, 'Heated Coolant', hotPct, colors.pink)
-	resourceBox(4, 'Waste', wastePct, colors.brown)
-
-	local rightHeight = h
-	local topH = floor(rightHeight / 2)
-	local bottomH = rightHeight - topH
-	local topY, bottomY = 1, 1 + topH
-
-	local function fillRect(x, y, wid, hei, bg)
-		for yy = 0, hei - 1 do
-			term.setCursorPos(x, y + yy)
-			term.setBackgroundColor(bg)
-			term.write(string.rep(' ', wid))
-		end
-		term.setBackgroundColor(colors.black)
-	end
-
-	fillRect(rightX, topY, rightW, topH, colors.gray)
-	local btnH = max(2, floor(topH / 2))
-	local btnColor
-	if active then
-		btnColor = colors.lime
-	else
-		if safetyShutdown then
-			if safetyHighDanger then
-				btnColor = colors.magenta
-			else
-				btnColor = colors.orange
-			end
-		else
-			btnColor = colors.red
-		end
-	end
-	for yy = 0, btnH - 1 do
-		term.setCursorPos(rightX, topY + yy)
-		term.setBackgroundColor(btnColor)
-		term.write(string.rep(' ', rightW))
-	end
-	local statusTxt = active and 'ONLINE' or 'OFFLINE'
-	term.setCursorPos(rightX + floor((rightW - #statusTxt) / 2), topY + floor(btnH / 2))
-	term.setTextColor(colors.white)
-	term.write(statusTxt)
-	newAdd('onoff', rightX, topY, rightW, 'BTN', toggleOnOff, btnH)
-
-	local infoY = topY + btnH + 1
-	local dispTemp = convertTemp(temp)
-	local lines = {
-		'Heat Rate: ' .. (heatRate and (fmt(heatRate) .. ' mB/t') or 'n/a'),
-		'Damage: ' .. (dmg and (round(dmg) .. '%') or 'n/a'),
-		'Temp: ' .. (dispTemp and (fmt(dispTemp) .. DEG .. TEMP_UNIT) or 'n/a')
+	if changed.w or changed.h then layoutDirty=true; drawLayout() end
+	local resources = {
+		{key='cool', label='Coolant', pct=snap.cool, color=colors.lightBlue},
+		{key='fuel', label='Fuel', pct=snap.fuel, color=colors.gray},
+		{key='hot', label='Heated Coolant', pct=snap.hot, color=colors.pink},
+		{key='waste', label='Waste', pct=snap.waste, color=colors.brown},
 	}
-	for i, l in ipairs(lines) do
-		if infoY + i - 1 < topY + topH then
-			term.setCursorPos(rightX + 1, infoY + i - 1)
-			term.setBackgroundColor(colors.gray)
-			term.setTextColor(colors.white)
-			term.write(l:sub(1, rightW - 2))
+	local boxH = floor(h/4)
+	for i,res in ipairs(resources) do
+		if changed[res.key] or not prevSnapshot then
+			local y = 1 + (i-1)*boxH
+			local bh = (i==4) and (h-y+1) or boxH
+			local areaY = y+1
+			drawBar(1, areaY, leftW, max(1,bh-1), res.pct, res.color)
+			drawText(2,y,res.label,colors.white,colors.black,leftW-3)
+			drawText(max(2,leftW-5),y,fmtStr('%d%%',floor(res.pct+0.5)),colors.white,colors.black,5)
 		end
 	end
-
-	local bottomPadding = 1
-	local safetyBtnHeight = 3
-	local safetyBtnY = topY + topH - bottomPadding - safetyBtnHeight
-	if safetyBtnY >= infoY + #lines then
-		local safetyLabel = 'Safety Mode'
-		local sColor = safetyMode and colors.lime or colors.red
-		local btnX = rightX + 1
-		local btnW = rightW - 2
-		if btnW >= 6 and safetyBtnY + safetyBtnHeight - 1 < topY + topH then
-			for yy = 0, safetyBtnHeight - 1 do
-				term.setCursorPos(btnX, safetyBtnY + yy)
-				term.setBackgroundColor(sColor)
-				term.write(string.rep(' ', btnW))
-			end
-			local labelY = safetyBtnY + math.floor(safetyBtnHeight / 2)
-			term.setCursorPos(btnX + math.max(0, floor((btnW - #safetyLabel) / 2)), labelY)
-			term.setTextColor(colors.white)
-			term.write(safetyLabel:sub(1, btnW))
-			term.setBackgroundColor(colors.black)
-			newAdd('safety', btnX, safetyBtnY, btnW, safetyLabel, toggleSafetyMode, safetyBtnHeight)
+	if changed.active or changed.dmg or changed.temp or changed.heatRate then
+		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
+		for yy=0,statusH-1 do
+			term.setCursorPos(rightX,1+yy); term.setBackgroundColor(btnColor); term.write(string.rep(' ',rightW))
 		end
+		local statusTxt = snap.active and 'ONLINE' or 'OFFLINE'
+		drawText(rightX+floor((rightW-#statusTxt)/2),1+floor(statusH/2),statusTxt,colors.white,btnColor,rightW)
+		drawText(rightX+1,statusH+2,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+3,'Damage: '..(snap.dmg and (round(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
+		local t=convertTemp(snap.temp)
+		drawText(rightX+1,statusH+4,'Temp: '..(t and (fmt(t)..DEG..'C') or 'n/a'),colors.white,colors.gray,rightW-2)
 	end
-
-	fillRect(rightX, bottomY, rightW, bottomH, colors.gray)
-	local burnTopMargin, burnBottomMargin, titleLines = 1, 1, 1
-	local buttonHeight = (bottomH >= 8 and 3) or (bottomH >= 6 and 2) or 1
-	local reservedBR = burnTopMargin + titleLines + burnBottomMargin
-	if bottomH < reservedBR + buttonHeight + 1 then
-		burnBottomMargin = 0;
-		reservedBR = burnTopMargin + titleLines
-		if bottomH < reservedBR + buttonHeight + 1 then
-			burnTopMargin = 0;
-			reservedBR = titleLines
-		end
+	local listY = topH+1
+	for i,check in ipairs(safetyChecks) do
+		local y=listY+i
+		local label=(check.enabled and '[x] ' or '[ ] ')..check.label
+		drawText(rightX+1,y,label,check.enabled and colors.lime or colors.lightGray,colors.gray,rightW-2)
 	end
-	for yy = 0, reservedBR - 1 do
-		term.setCursorPos(rightX, bottomY + yy)
-		term.setBackgroundColor(colors.black)
-		term.write(string.rep(' ', rightW))
-	end
-	local titleY = bottomY + burnTopMargin
-	term.setCursorPos(rightX + 1, titleY)
-	term.setTextColor(colors.white)
 	term.setBackgroundColor(colors.black)
-	term.write('Burn Rate')
-	local brDisp, brMaxDisp = br or 0, (brMax and round(brMax)) or 0
-	local brStr = brDisp .. '/' .. brMaxDisp .. ' mB/t'
-	local minAfterTitle = rightX + 11
-	local brPos = rightX + rightW - #brStr;
-	if brPos < minAfterTitle then
-		brPos = minAfterTitle
-	end
-	term.setCursorPos(brPos, titleY)
-	term.write(brStr:sub(1, rightW - (minAfterTitle - rightX)))
-	local barTop = bottomY + reservedBR
-	local barAreaH = bottomH - reservedBR - buttonHeight;
-	if barAreaH < 1 then
-		barAreaH = 1
-	end
-	local fillH = floor(barAreaH * brPct / 100 + 0.5)
-	for i = 0, barAreaH - 1 do
-		local yLine = barTop + barAreaH - 1 - i
-		term.setCursorPos(rightX, yLine)
-		term.setBackgroundColor(i < fillH and colors.orange or colors.black)
-		term.write(string.rep(' ', rightW))
-	end
-	local btnTop = bottomY + bottomH - buttonHeight
-	local halfW = floor(rightW / 2)
-	newAdd('dec', rightX, btnTop, halfW, '-', function()
-		adjustRate(-1)
-	end, buttonHeight)
-	newAdd('inc', rightX + halfW, btnTop, rightW - halfW, '+', function()
-		adjustRate(1)
-	end, buttonHeight)
-	drawBtn(newButtons.dec, false, colors.red, colors.white)
-	drawBtn(newButtons.inc, false, colors.green, colors.white)
-
-	buttons = newButtons
 end
 
 local function handleClick(x, y)
 	for _, b in pairs(buttons) do
 		if x >= b.x and x < b.x + b.w and y >= b.y and y <= b.y + (b.h or 1) - 1 then
 			b.fn();
+			prevSnapshot = nil
+			layoutDirty = true
 			draw();
 			return
 		end
@@ -570,21 +425,21 @@ local function autoRedraw()
 
 			if status then
 				local reason, highDanger = nil, false
-				if dmg > SAFETY_DMG_HIGH then
+				if safetyChecks[6].enabled and dmg > SAFETY_DMG_HIGH then
 					reason, highDanger = 'Damage >' .. SAFETY_DMG_HIGH .. '%', true
-				elseif tempF > SAFETY_TEMP_F then
+				elseif safetyChecks[7].enabled and tempF > SAFETY_TEMP_F then
 					reason, highDanger = 'Temp >' .. SAFETY_TEMP_F .. 'F', true
-				elseif coolant < SAFETY_COOLANT_MIN then
+				elseif safetyChecks[1].enabled and coolant < SAFETY_COOLANT_MIN then
 					reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
-				elseif fuel < SAFETY_FUEL_MIN then
+				elseif safetyChecks[2].enabled and fuel < SAFETY_FUEL_MIN then
 					reason = 'Fuel <' .. SAFETY_FUEL_MIN .. '%'
-				elseif heated > SAFETY_HEATED_MAX then
+				elseif safetyChecks[3].enabled and heated > SAFETY_HEATED_MAX then
 					reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
-				elseif waste > SAFETY_WASTE_MAX then
+				elseif safetyChecks[4].enabled and waste > SAFETY_WASTE_MAX then
 					reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
-				elseif dmg > SAFETY_DMG_WARN then
+				elseif safetyChecks[5].enabled and dmg > SAFETY_DMG_WARN then
 					reason = 'Damage >' .. SAFETY_DMG_WARN .. '%'
-				elseif isRedstoneTriggered() then
+				elseif safetyChecks[8].enabled and isRedstoneTriggered() then
 					reason = 'Redstone signal'
 				end
 				if reason then
