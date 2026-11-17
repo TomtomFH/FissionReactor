@@ -150,10 +150,997 @@ local function fmt(n)
 	if type(n) ~= 'number' then
 		return 'n/a'
 	end
-	if n >= 1000 then
-		return fmtStr('%.1fK', n / 1000)
+	local rounded = fmtStr('%.2f', abs(n))
+	rounded = rounded:gsub('0+
+
+local DEG = string.char(176)
+local TEMP_UNIT = TEMP_IN_F and 'F' or 'C'
+
+local function kelvinToF(k)
+	if type(k) ~= 'number' then return nil end
+	return (k - 273.15) * 9 / 5 + 32
+end
+
+local function kelvinToC(k)
+	if type(k) ~= 'number' then return nil end
+	return k - 273.15
+end
+
+local function convertTemp(k)
+	if TEMP_IN_F then return kelvinToF(k) end
+	return kelvinToC(k)
+end
+
+local function isRedstoneTriggered()
+	if not (REDSTONE_OFF_LEVEL and rs) then return false end
+	for _, side in ipairs(RS_SIDES) do
+		if (rs.getAnalogueInput(side) or 0) >= REDSTONE_OFF_LEVEL then
+			return true
+		end
 	end
-	return tostring(floor(n * 100 + 0.5) / 100)
+	return false
+end
+
+local function getBurnStep()
+	local m = r.getBurnRate('max') or 0
+	if m <= 0 then return 0.1 end
+	if m < 1 then return 0.1 end
+	local targetPresses = 30
+	local raw = m / targetPresses
+	local nice = {0.1,0.2,0.25,0.5,1,2,2.5,5,10,15,20,25,50,75,100,125,150,200,250,300,400,500,750,1000}
+	for _, v in ipairs(nice) do
+		if v >= raw then
+			return v
+		end
+	end
+	return nice[#nice]
+end
+
+local function normalizeRate(v)
+	return floor(v * 100 + 0.5) / 100
+end
+
+local function adjustRate(dir)
+	local cur = r.getBurnRate() or 0
+	local maxR = r.getBurnRate('max') or cur
+	local new = cur + getBurnStep() * dir
+	if new < 0 then
+		new = 0
+	elseif new > maxR then
+		new = maxR
+	end
+	new = normalizeRate(new)
+	if new ~= cur then
+		r.setBurnRate(new)
+	end
+end
+
+local function toggleOnOff()
+	local cur = r.getStatus()
+	if cur then
+		resetSafetyShutdown()
+		r.setStatus(false)
+	else
+		resetSafetyShutdown()
+		r.setStatus(true)
+	end
+end
+
+local function runUpdater()
+	if not shell or not shell.run then return end
+	shell.run("update")
+end
+
+local function rebootComputer()
+	_G.os.reboot()
+end
+
+local layoutDirty = true
+local prevSnapshot = nil
+local function drawText(x, y, value, fg, bg, width)
+	value = tostring(value or '')
+	term.setCursorPos(x, y)
+	term.setTextColor(fg or colors.white)
+	term.setBackgroundColor(bg or colors.black)
+	if width then value = value:sub(1, width) end
+	term.write(value)
+end
+local function drawBar(x, y, width, height, pct, fill)
+	pct = math.max(0, math.min(100, tonumber(pct) or 0))
+	local filled = floor(width * pct / 100 + 0.5)
+	for row = 0, height - 1 do
+		term.setCursorPos(x, y + row)
+		term.setBackgroundColor(colors.black)
+		term.write(string.rep(' ', width))
+		if filled > 0 then
+			term.setCursorPos(x, y + row)
+			term.setBackgroundColor(fill)
+			term.write(string.rep(' ', filled))
+		end
+	end
+	term.setBackgroundColor(colors.black)
+end
+local function drawLayout()
+	w, h = term.getSize()
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local boxH = floor(h / 4)
+	for i, title in ipairs({'Coolant', 'Fuel', 'Heated Coolant', 'Waste'}) do
+		local y = 1 + (i - 1) * boxH
+		drawText(2, y, title, colors.white, colors.black, leftW - 2)
+	end
+	local topH = floor(h / 2)
+	local bottomH = h - topH
+	term.setBackgroundColor(colors.gray)
+	for y = 1, h do
+		term.setCursorPos(rightX, y)
+		term.write(string.rep(' ', rightW))
+	end
+	term.setBackgroundColor(colors.black)
+	local statusH = max(2, floor(topH / 5))
+	newButtons = {}
+	local function add(id, x, y, bw, bh, fn)
+		newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn}
+	end
+	add('onoff', rightX, 1, rightW, statusH, toggleOnOff)
+	drawText(rightX + 1, statusH + 2, 'Burn Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 3, 'Heat Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
+
+	local updateY = topH + 7
+	local rebootY = topH + 9
+	if rebootY > h then
+		updateY = h - 2
+		rebootY = h
+	end
+	add('update', rightX + 1, updateY, rightW - 2, 1, runUpdater)
+	add('reboot', rightX + 1, rebootY, rightW - 2, 1, rebootComputer)
+	drawBtn({x=rightX + 1, y=updateY, w=rightW - 2, h=1, l='UPDATE'}, nil, colors.blue, colors.white)
+	drawBtn({x=rightX + 1, y=rebootY, w=rightW - 2, h=1, l='REBOOT'}, nil, colors.red, colors.white)
+	buttons = newButtons
+	layoutDirty = false
+end
+local function draw()
+	w, h = term.getSize()
+	local dimensionsChanged = prevSnapshot and (w ~= prevSnapshot.w or h ~= prevSnapshot.h)
+	local redrawAll = layoutDirty or dimensionsChanged
+	if redrawAll then layoutDirty = true; drawLayout() end
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local topH = floor(h / 2)
+	local statusH = max(2, floor(topH / 5))
+	local snap = {
+		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
+		burnRate=r.getBurnRate(),
+		fuel=r.getFuel('percent') or 0, fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
+		waste=r.getWaste('percent') or 0, wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
+		cool=r.getCoolant('percent') or 0, coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
+		hot=r.getHeatedCoolant('percent') or 0, hotAmount=r.getHeatedCoolant(), hotMax=r.getHeatedCoolant('max'),
+		w=w,h=h
+	}
+	local changed = {}
+	if not prevSnapshot then
+		for k in pairs(snap) do changed[k] = true end
+	else
+		for k,v in pairs(snap) do
+			local old = prevSnapshot[k]
+			if type(v)=='number' and type(old)=='number' then
+				if abs(v-old)>0.01 then changed[k]=true end
+			elseif v ~= old then changed[k]=true end
+		end
+	end
+	if redrawAll or changed.w or changed.h then
+		for k in pairs(snap) do changed[k] = true end
+	end
+	prevSnapshot = snap
+	local resources = {
+		{key='cool', label='Coolant', pct=snap.cool, color=colors.lightBlue},
+		{key='fuel', label='Fuel', pct=snap.fuel, color=colors.gray},
+		{key='hot', label='Heated Coolant', pct=snap.hot, color=colors.pink},
+		{key='waste', label='Waste', pct=snap.waste, color=colors.brown},
+	}
+	local boxH = floor(h/4)
+	for i,res in ipairs(resources) do
+		local amountKey = res.key .. 'Amount'
+		local maxKey = res.key .. 'Max'
+		if changed[res.key] or changed[amountKey] or changed[maxKey] or not prevSnapshot then
+			local y = 1 + (i-1)*boxH
+			local bh = (i==4) and (h-y+1) or boxH
+			local areaY = y+1
+			drawBar(1, areaY, leftW, max(1,bh-1), res.pct, res.color)
+			local amount = snap[amountKey]
+			local capacity = snap[maxKey]
+			local exact = (amount ~= nil and capacity ~= nil) and (fmt(amount)..' / '..fmt(capacity)) or (amount ~= nil and fmt(amount) or 'n/a')
+			local pctText = fmtStr('%d%%',floor(res.pct+0.5))
+			drawText(2,y,res.label,colors.white,colors.black,leftW-3)
+			local valueText = exact .. ' (' .. pctText .. ')'
+			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
+		end
+	end
+	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
+		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
+		for yy=0,statusH-1 do
+			term.setCursorPos(rightX,1+yy); term.setBackgroundColor(btnColor); term.write(string.rep(' ',rightW))
+		end
+		local statusTxt = snap.active and 'ONLINE' or 'OFFLINE'
+		drawText(rightX+floor((rightW-#statusTxt)/2),1+floor(statusH/2),statusTxt,colors.white,btnColor,rightW)
+		drawText(rightX+1,statusH+2,'Burn Rate: '..(snap.burnRate and (fmt(snap.burnRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+3,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+4,'Damage: '..(snap.dmg ~= nil and (fmt(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
+		local t=convertTemp(snap.temp)
+		drawText(rightX+1,statusH+5,'Temp: '..(t and (fmt(t)..DEG..TEMP_UNIT) or 'n/a'),colors.white,colors.gray,rightW-2)
+	end
+	term.setBackgroundColor(colors.black)
+end
+
+local function handleClick(x, y)
+	for _, b in pairs(buttons) do
+		if x >= b.x and x < b.x + b.w and y >= b.y and y <= b.y + (b.h or 1) - 1 then
+			b.fn();
+			prevSnapshot = nil
+			layoutDirty = true
+			draw();
+			return
+		end
+	end
+end
+
+local function inputLoop()
+	while true do
+		local ev, a, b, c = pullEvent()
+		if (useMon and ev == 'monitor_touch') then
+			handleClick(b, c)
+		elseif (not useMon and ev == 'mouse_click') then
+			handleClick(b, c)
+		elseif ev == 'term_resize' then
+			draw()
+		end
+	end
+end
+
+local function autoRedraw()
+	while true do
+		local status = r.getStatus()
+
+		local coolant = r.getCoolant('percent') or 0
+		local heated = r.getHeatedCoolant('percent') or 0
+		local waste = r.getWaste('percent') or 0
+		local dmg = r.getDamage() or 0
+
+		if status then
+			local reason = nil
+			if dmg > 0 then
+				reason = 'Damage detected'
+			elseif coolant < SAFETY_COOLANT_MIN then
+				reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
+			elseif heated > SAFETY_HEATED_MAX then
+				reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
+			elseif waste > SAFETY_WASTE_MAX then
+				reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
+			end
+
+			if reason then
+				r.setStatus(false)
+				safetyShutdown = true
+				-- Damage is an emergency trip: require a manual restart after inspection.
+				safetyHighDanger = dmg > 0
+				safetyLastReason = reason
+				status = false
+			end
+		elseif safetyShutdown and not safetyHighDanger then
+			local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
+				and heated <= SAFETY_RESTART_HEATED_MAX
+				and waste <= SAFETY_RESTART_WASTE_MAX
+				and dmg <= 0
+			if allSafe then
+				resetSafetyShutdown()
+				r.setStatus(true)
+				status = true
+			end
+		end
+
+		draw()
+		osSleep(REFRESH_INTERVAL)
+	end
+end
+
+local function modemListener()
+	while true do
+		local _, _, ch, _, msg = _G.os.pullEvent('modem_message')
+		if ch == MODEM_CHANNEL and type(msg) == 'table' and msg.type == 'reactor_data' then
+			wirelessData = msg.data or {}
+		end
+	end
+end
+
+draw()
+if parallel and parallel.waitForAny then
+	if IS_WIRELESS then
+		parallel.waitForAny(autoRedraw, inputLoop, modemListener)
+	else
+		parallel.waitForAny(autoRedraw, inputLoop)
+	end
+else
+	autoRedraw()
+end
+
+term.setBackgroundColor(colors.black)
+term.clear()
+term.setCursorPos(1, 1)
+term.setTextColor(colors.white)
+term.write('Reactor UI closed.')
+, ''):gsub('%.
+
+local DEG = string.char(176)
+local TEMP_UNIT = TEMP_IN_F and 'F' or 'C'
+
+local function kelvinToF(k)
+	if type(k) ~= 'number' then return nil end
+	return (k - 273.15) * 9 / 5 + 32
+end
+
+local function kelvinToC(k)
+	if type(k) ~= 'number' then return nil end
+	return k - 273.15
+end
+
+local function convertTemp(k)
+	if TEMP_IN_F then return kelvinToF(k) end
+	return kelvinToC(k)
+end
+
+local function isRedstoneTriggered()
+	if not (REDSTONE_OFF_LEVEL and rs) then return false end
+	for _, side in ipairs(RS_SIDES) do
+		if (rs.getAnalogueInput(side) or 0) >= REDSTONE_OFF_LEVEL then
+			return true
+		end
+	end
+	return false
+end
+
+local function getBurnStep()
+	local m = r.getBurnRate('max') or 0
+	if m <= 0 then return 0.1 end
+	if m < 1 then return 0.1 end
+	local targetPresses = 30
+	local raw = m / targetPresses
+	local nice = {0.1,0.2,0.25,0.5,1,2,2.5,5,10,15,20,25,50,75,100,125,150,200,250,300,400,500,750,1000}
+	for _, v in ipairs(nice) do
+		if v >= raw then
+			return v
+		end
+	end
+	return nice[#nice]
+end
+
+local function normalizeRate(v)
+	return floor(v * 100 + 0.5) / 100
+end
+
+local function adjustRate(dir)
+	local cur = r.getBurnRate() or 0
+	local maxR = r.getBurnRate('max') or cur
+	local new = cur + getBurnStep() * dir
+	if new < 0 then
+		new = 0
+	elseif new > maxR then
+		new = maxR
+	end
+	new = normalizeRate(new)
+	if new ~= cur then
+		r.setBurnRate(new)
+	end
+end
+
+local function toggleOnOff()
+	local cur = r.getStatus()
+	if cur then
+		resetSafetyShutdown()
+		r.setStatus(false)
+	else
+		resetSafetyShutdown()
+		r.setStatus(true)
+	end
+end
+
+local function runUpdater()
+	if not shell or not shell.run then return end
+	shell.run("update")
+end
+
+local function rebootComputer()
+	_G.os.reboot()
+end
+
+local layoutDirty = true
+local prevSnapshot = nil
+local function drawText(x, y, value, fg, bg, width)
+	value = tostring(value or '')
+	term.setCursorPos(x, y)
+	term.setTextColor(fg or colors.white)
+	term.setBackgroundColor(bg or colors.black)
+	if width then value = value:sub(1, width) end
+	term.write(value)
+end
+local function drawBar(x, y, width, height, pct, fill)
+	pct = math.max(0, math.min(100, tonumber(pct) or 0))
+	local filled = floor(width * pct / 100 + 0.5)
+	for row = 0, height - 1 do
+		term.setCursorPos(x, y + row)
+		term.setBackgroundColor(colors.black)
+		term.write(string.rep(' ', width))
+		if filled > 0 then
+			term.setCursorPos(x, y + row)
+			term.setBackgroundColor(fill)
+			term.write(string.rep(' ', filled))
+		end
+	end
+	term.setBackgroundColor(colors.black)
+end
+local function drawLayout()
+	w, h = term.getSize()
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local boxH = floor(h / 4)
+	for i, title in ipairs({'Coolant', 'Fuel', 'Heated Coolant', 'Waste'}) do
+		local y = 1 + (i - 1) * boxH
+		drawText(2, y, title, colors.white, colors.black, leftW - 2)
+	end
+	local topH = floor(h / 2)
+	local bottomH = h - topH
+	term.setBackgroundColor(colors.gray)
+	for y = 1, h do
+		term.setCursorPos(rightX, y)
+		term.write(string.rep(' ', rightW))
+	end
+	term.setBackgroundColor(colors.black)
+	local statusH = max(2, floor(topH / 5))
+	newButtons = {}
+	local function add(id, x, y, bw, bh, fn)
+		newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn}
+	end
+	add('onoff', rightX, 1, rightW, statusH, toggleOnOff)
+	drawText(rightX + 1, statusH + 2, 'Burn Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 3, 'Heat Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
+
+	local updateY = topH + 7
+	local rebootY = topH + 9
+	if rebootY > h then
+		updateY = h - 2
+		rebootY = h
+	end
+	add('update', rightX + 1, updateY, rightW - 2, 1, runUpdater)
+	add('reboot', rightX + 1, rebootY, rightW - 2, 1, rebootComputer)
+	drawBtn({x=rightX + 1, y=updateY, w=rightW - 2, h=1, l='UPDATE'}, nil, colors.blue, colors.white)
+	drawBtn({x=rightX + 1, y=rebootY, w=rightW - 2, h=1, l='REBOOT'}, nil, colors.red, colors.white)
+	buttons = newButtons
+	layoutDirty = false
+end
+local function draw()
+	w, h = term.getSize()
+	local dimensionsChanged = prevSnapshot and (w ~= prevSnapshot.w or h ~= prevSnapshot.h)
+	local redrawAll = layoutDirty or dimensionsChanged
+	if redrawAll then layoutDirty = true; drawLayout() end
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local topH = floor(h / 2)
+	local statusH = max(2, floor(topH / 5))
+	local snap = {
+		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
+		burnRate=r.getBurnRate(),
+		fuel=r.getFuel('percent') or 0, fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
+		waste=r.getWaste('percent') or 0, wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
+		cool=r.getCoolant('percent') or 0, coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
+		hot=r.getHeatedCoolant('percent') or 0, hotAmount=r.getHeatedCoolant(), hotMax=r.getHeatedCoolant('max'),
+		w=w,h=h
+	}
+	local changed = {}
+	if not prevSnapshot then
+		for k in pairs(snap) do changed[k] = true end
+	else
+		for k,v in pairs(snap) do
+			local old = prevSnapshot[k]
+			if type(v)=='number' and type(old)=='number' then
+				if abs(v-old)>0.01 then changed[k]=true end
+			elseif v ~= old then changed[k]=true end
+		end
+	end
+	if redrawAll or changed.w or changed.h then
+		for k in pairs(snap) do changed[k] = true end
+	end
+	prevSnapshot = snap
+	local resources = {
+		{key='cool', label='Coolant', pct=snap.cool, color=colors.lightBlue},
+		{key='fuel', label='Fuel', pct=snap.fuel, color=colors.gray},
+		{key='hot', label='Heated Coolant', pct=snap.hot, color=colors.pink},
+		{key='waste', label='Waste', pct=snap.waste, color=colors.brown},
+	}
+	local boxH = floor(h/4)
+	for i,res in ipairs(resources) do
+		local amountKey = res.key .. 'Amount'
+		local maxKey = res.key .. 'Max'
+		if changed[res.key] or changed[amountKey] or changed[maxKey] or not prevSnapshot then
+			local y = 1 + (i-1)*boxH
+			local bh = (i==4) and (h-y+1) or boxH
+			local areaY = y+1
+			drawBar(1, areaY, leftW, max(1,bh-1), res.pct, res.color)
+			local amount = snap[amountKey]
+			local capacity = snap[maxKey]
+			local exact = (amount ~= nil and capacity ~= nil) and (fmt(amount)..' / '..fmt(capacity)) or (amount ~= nil and fmt(amount) or 'n/a')
+			local pctText = fmtStr('%d%%',floor(res.pct+0.5))
+			drawText(2,y,res.label,colors.white,colors.black,leftW-3)
+			local valueText = exact .. ' (' .. pctText .. ')'
+			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
+		end
+	end
+	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
+		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
+		for yy=0,statusH-1 do
+			term.setCursorPos(rightX,1+yy); term.setBackgroundColor(btnColor); term.write(string.rep(' ',rightW))
+		end
+		local statusTxt = snap.active and 'ONLINE' or 'OFFLINE'
+		drawText(rightX+floor((rightW-#statusTxt)/2),1+floor(statusH/2),statusTxt,colors.white,btnColor,rightW)
+		drawText(rightX+1,statusH+2,'Burn Rate: '..(snap.burnRate and (fmt(snap.burnRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+3,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+4,'Damage: '..(snap.dmg ~= nil and (fmt(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
+		local t=convertTemp(snap.temp)
+		drawText(rightX+1,statusH+5,'Temp: '..(t and (fmt(t)..DEG..TEMP_UNIT) or 'n/a'),colors.white,colors.gray,rightW-2)
+	end
+	term.setBackgroundColor(colors.black)
+end
+
+local function handleClick(x, y)
+	for _, b in pairs(buttons) do
+		if x >= b.x and x < b.x + b.w and y >= b.y and y <= b.y + (b.h or 1) - 1 then
+			b.fn();
+			prevSnapshot = nil
+			layoutDirty = true
+			draw();
+			return
+		end
+	end
+end
+
+local function inputLoop()
+	while true do
+		local ev, a, b, c = pullEvent()
+		if (useMon and ev == 'monitor_touch') then
+			handleClick(b, c)
+		elseif (not useMon and ev == 'mouse_click') then
+			handleClick(b, c)
+		elseif ev == 'term_resize' then
+			draw()
+		end
+	end
+end
+
+local function autoRedraw()
+	while true do
+		local status = r.getStatus()
+
+		local coolant = r.getCoolant('percent') or 0
+		local heated = r.getHeatedCoolant('percent') or 0
+		local waste = r.getWaste('percent') or 0
+		local dmg = r.getDamage() or 0
+
+		if status then
+			local reason = nil
+			if dmg > 0 then
+				reason = 'Damage detected'
+			elseif coolant < SAFETY_COOLANT_MIN then
+				reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
+			elseif heated > SAFETY_HEATED_MAX then
+				reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
+			elseif waste > SAFETY_WASTE_MAX then
+				reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
+			end
+
+			if reason then
+				r.setStatus(false)
+				safetyShutdown = true
+				-- Damage is an emergency trip: require a manual restart after inspection.
+				safetyHighDanger = dmg > 0
+				safetyLastReason = reason
+				status = false
+			end
+		elseif safetyShutdown and not safetyHighDanger then
+			local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
+				and heated <= SAFETY_RESTART_HEATED_MAX
+				and waste <= SAFETY_RESTART_WASTE_MAX
+				and dmg <= 0
+			if allSafe then
+				resetSafetyShutdown()
+				r.setStatus(true)
+				status = true
+			end
+		end
+
+		draw()
+		osSleep(REFRESH_INTERVAL)
+	end
+end
+
+local function modemListener()
+	while true do
+		local _, _, ch, _, msg = _G.os.pullEvent('modem_message')
+		if ch == MODEM_CHANNEL and type(msg) == 'table' and msg.type == 'reactor_data' then
+			wirelessData = msg.data or {}
+		end
+	end
+end
+
+draw()
+if parallel and parallel.waitForAny then
+	if IS_WIRELESS then
+		parallel.waitForAny(autoRedraw, inputLoop, modemListener)
+	else
+		parallel.waitForAny(autoRedraw, inputLoop)
+	end
+else
+	autoRedraw()
+end
+
+term.setBackgroundColor(colors.black)
+term.clear()
+term.setCursorPos(1, 1)
+term.setTextColor(colors.white)
+term.write('Reactor UI closed.')
+, '')
+	local whole, fraction = rounded:match('^(%d+)%.?(%d*)
+
+local DEG = string.char(176)
+local TEMP_UNIT = TEMP_IN_F and 'F' or 'C'
+
+local function kelvinToF(k)
+	if type(k) ~= 'number' then return nil end
+	return (k - 273.15) * 9 / 5 + 32
+end
+
+local function kelvinToC(k)
+	if type(k) ~= 'number' then return nil end
+	return k - 273.15
+end
+
+local function convertTemp(k)
+	if TEMP_IN_F then return kelvinToF(k) end
+	return kelvinToC(k)
+end
+
+local function isRedstoneTriggered()
+	if not (REDSTONE_OFF_LEVEL and rs) then return false end
+	for _, side in ipairs(RS_SIDES) do
+		if (rs.getAnalogueInput(side) or 0) >= REDSTONE_OFF_LEVEL then
+			return true
+		end
+	end
+	return false
+end
+
+local function getBurnStep()
+	local m = r.getBurnRate('max') or 0
+	if m <= 0 then return 0.1 end
+	if m < 1 then return 0.1 end
+	local targetPresses = 30
+	local raw = m / targetPresses
+	local nice = {0.1,0.2,0.25,0.5,1,2,2.5,5,10,15,20,25,50,75,100,125,150,200,250,300,400,500,750,1000}
+	for _, v in ipairs(nice) do
+		if v >= raw then
+			return v
+		end
+	end
+	return nice[#nice]
+end
+
+local function normalizeRate(v)
+	return floor(v * 100 + 0.5) / 100
+end
+
+local function adjustRate(dir)
+	local cur = r.getBurnRate() or 0
+	local maxR = r.getBurnRate('max') or cur
+	local new = cur + getBurnStep() * dir
+	if new < 0 then
+		new = 0
+	elseif new > maxR then
+		new = maxR
+	end
+	new = normalizeRate(new)
+	if new ~= cur then
+		r.setBurnRate(new)
+	end
+end
+
+local function toggleOnOff()
+	local cur = r.getStatus()
+	if cur then
+		resetSafetyShutdown()
+		r.setStatus(false)
+	else
+		resetSafetyShutdown()
+		r.setStatus(true)
+	end
+end
+
+local function runUpdater()
+	if not shell or not shell.run then return end
+	shell.run("update")
+end
+
+local function rebootComputer()
+	_G.os.reboot()
+end
+
+local layoutDirty = true
+local prevSnapshot = nil
+local function drawText(x, y, value, fg, bg, width)
+	value = tostring(value or '')
+	term.setCursorPos(x, y)
+	term.setTextColor(fg or colors.white)
+	term.setBackgroundColor(bg or colors.black)
+	if width then value = value:sub(1, width) end
+	term.write(value)
+end
+local function drawBar(x, y, width, height, pct, fill)
+	pct = math.max(0, math.min(100, tonumber(pct) or 0))
+	local filled = floor(width * pct / 100 + 0.5)
+	for row = 0, height - 1 do
+		term.setCursorPos(x, y + row)
+		term.setBackgroundColor(colors.black)
+		term.write(string.rep(' ', width))
+		if filled > 0 then
+			term.setCursorPos(x, y + row)
+			term.setBackgroundColor(fill)
+			term.write(string.rep(' ', filled))
+		end
+	end
+	term.setBackgroundColor(colors.black)
+end
+local function drawLayout()
+	w, h = term.getSize()
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local boxH = floor(h / 4)
+	for i, title in ipairs({'Coolant', 'Fuel', 'Heated Coolant', 'Waste'}) do
+		local y = 1 + (i - 1) * boxH
+		drawText(2, y, title, colors.white, colors.black, leftW - 2)
+	end
+	local topH = floor(h / 2)
+	local bottomH = h - topH
+	term.setBackgroundColor(colors.gray)
+	for y = 1, h do
+		term.setCursorPos(rightX, y)
+		term.write(string.rep(' ', rightW))
+	end
+	term.setBackgroundColor(colors.black)
+	local statusH = max(2, floor(topH / 5))
+	newButtons = {}
+	local function add(id, x, y, bw, bh, fn)
+		newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn}
+	end
+	add('onoff', rightX, 1, rightW, statusH, toggleOnOff)
+	drawText(rightX + 1, statusH + 2, 'Burn Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 3, 'Heat Rate:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
+
+	local updateY = topH + 7
+	local rebootY = topH + 9
+	if rebootY > h then
+		updateY = h - 2
+		rebootY = h
+	end
+	add('update', rightX + 1, updateY, rightW - 2, 1, runUpdater)
+	add('reboot', rightX + 1, rebootY, rightW - 2, 1, rebootComputer)
+	drawBtn({x=rightX + 1, y=updateY, w=rightW - 2, h=1, l='UPDATE'}, nil, colors.blue, colors.white)
+	drawBtn({x=rightX + 1, y=rebootY, w=rightW - 2, h=1, l='REBOOT'}, nil, colors.red, colors.white)
+	buttons = newButtons
+	layoutDirty = false
+end
+local function draw()
+	w, h = term.getSize()
+	local dimensionsChanged = prevSnapshot and (w ~= prevSnapshot.w or h ~= prevSnapshot.h)
+	local redrawAll = layoutDirty or dimensionsChanged
+	if redrawAll then layoutDirty = true; drawLayout() end
+	local rightW = max(15, floor(w * 0.23))
+	if w - rightW < 25 then rightW = max(12, w - 25) end
+	local leftW = w - rightW - 1
+	local rightX = leftW + 2
+	local topH = floor(h / 2)
+	local statusH = max(2, floor(topH / 5))
+	local snap = {
+		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
+		burnRate=r.getBurnRate(),
+		fuel=r.getFuel('percent') or 0, fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
+		waste=r.getWaste('percent') or 0, wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
+		cool=r.getCoolant('percent') or 0, coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
+		hot=r.getHeatedCoolant('percent') or 0, hotAmount=r.getHeatedCoolant(), hotMax=r.getHeatedCoolant('max'),
+		w=w,h=h
+	}
+	local changed = {}
+	if not prevSnapshot then
+		for k in pairs(snap) do changed[k] = true end
+	else
+		for k,v in pairs(snap) do
+			local old = prevSnapshot[k]
+			if type(v)=='number' and type(old)=='number' then
+				if abs(v-old)>0.01 then changed[k]=true end
+			elseif v ~= old then changed[k]=true end
+		end
+	end
+	if redrawAll or changed.w or changed.h then
+		for k in pairs(snap) do changed[k] = true end
+	end
+	prevSnapshot = snap
+	local resources = {
+		{key='cool', label='Coolant', pct=snap.cool, color=colors.lightBlue},
+		{key='fuel', label='Fuel', pct=snap.fuel, color=colors.gray},
+		{key='hot', label='Heated Coolant', pct=snap.hot, color=colors.pink},
+		{key='waste', label='Waste', pct=snap.waste, color=colors.brown},
+	}
+	local boxH = floor(h/4)
+	for i,res in ipairs(resources) do
+		local amountKey = res.key .. 'Amount'
+		local maxKey = res.key .. 'Max'
+		if changed[res.key] or changed[amountKey] or changed[maxKey] or not prevSnapshot then
+			local y = 1 + (i-1)*boxH
+			local bh = (i==4) and (h-y+1) or boxH
+			local areaY = y+1
+			drawBar(1, areaY, leftW, max(1,bh-1), res.pct, res.color)
+			local amount = snap[amountKey]
+			local capacity = snap[maxKey]
+			local exact = (amount ~= nil and capacity ~= nil) and (fmt(amount)..' / '..fmt(capacity)) or (amount ~= nil and fmt(amount) or 'n/a')
+			local pctText = fmtStr('%d%%',floor(res.pct+0.5))
+			drawText(2,y,res.label,colors.white,colors.black,leftW-3)
+			local valueText = exact .. ' (' .. pctText .. ')'
+			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
+		end
+	end
+	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
+		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
+		for yy=0,statusH-1 do
+			term.setCursorPos(rightX,1+yy); term.setBackgroundColor(btnColor); term.write(string.rep(' ',rightW))
+		end
+		local statusTxt = snap.active and 'ONLINE' or 'OFFLINE'
+		drawText(rightX+floor((rightW-#statusTxt)/2),1+floor(statusH/2),statusTxt,colors.white,btnColor,rightW)
+		drawText(rightX+1,statusH+2,'Burn Rate: '..(snap.burnRate and (fmt(snap.burnRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+3,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+4,'Damage: '..(snap.dmg ~= nil and (fmt(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
+		local t=convertTemp(snap.temp)
+		drawText(rightX+1,statusH+5,'Temp: '..(t and (fmt(t)..DEG..TEMP_UNIT) or 'n/a'),colors.white,colors.gray,rightW-2)
+	end
+	term.setBackgroundColor(colors.black)
+end
+
+local function handleClick(x, y)
+	for _, b in pairs(buttons) do
+		if x >= b.x and x < b.x + b.w and y >= b.y and y <= b.y + (b.h or 1) - 1 then
+			b.fn();
+			prevSnapshot = nil
+			layoutDirty = true
+			draw();
+			return
+		end
+	end
+end
+
+local function inputLoop()
+	while true do
+		local ev, a, b, c = pullEvent()
+		if (useMon and ev == 'monitor_touch') then
+			handleClick(b, c)
+		elseif (not useMon and ev == 'mouse_click') then
+			handleClick(b, c)
+		elseif ev == 'term_resize' then
+			draw()
+		end
+	end
+end
+
+local function autoRedraw()
+	while true do
+		local status = r.getStatus()
+
+		local coolant = r.getCoolant('percent') or 0
+		local heated = r.getHeatedCoolant('percent') or 0
+		local waste = r.getWaste('percent') or 0
+		local dmg = r.getDamage() or 0
+
+		if status then
+			local reason = nil
+			if dmg > 0 then
+				reason = 'Damage detected'
+			elseif coolant < SAFETY_COOLANT_MIN then
+				reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
+			elseif heated > SAFETY_HEATED_MAX then
+				reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
+			elseif waste > SAFETY_WASTE_MAX then
+				reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
+			end
+
+			if reason then
+				r.setStatus(false)
+				safetyShutdown = true
+				-- Damage is an emergency trip: require a manual restart after inspection.
+				safetyHighDanger = dmg > 0
+				safetyLastReason = reason
+				status = false
+			end
+		elseif safetyShutdown and not safetyHighDanger then
+			local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
+				and heated <= SAFETY_RESTART_HEATED_MAX
+				and waste <= SAFETY_RESTART_WASTE_MAX
+				and dmg <= 0
+			if allSafe then
+				resetSafetyShutdown()
+				r.setStatus(true)
+				status = true
+			end
+		end
+
+		draw()
+		osSleep(REFRESH_INTERVAL)
+	end
+end
+
+local function modemListener()
+	while true do
+		local _, _, ch, _, msg = _G.os.pullEvent('modem_message')
+		if ch == MODEM_CHANNEL and type(msg) == 'table' and msg.type == 'reactor_data' then
+			wirelessData = msg.data or {}
+		end
+	end
+end
+
+draw()
+if parallel and parallel.waitForAny then
+	if IS_WIRELESS then
+		parallel.waitForAny(autoRedraw, inputLoop, modemListener)
+	else
+		parallel.waitForAny(autoRedraw, inputLoop)
+	end
+else
+	autoRedraw()
+end
+
+term.setBackgroundColor(colors.black)
+term.clear()
+term.setCursorPos(1, 1)
+term.setTextColor(colors.white)
+term.write('Reactor UI closed.')
+)
+	if not whole then return tostring(n) end
+	whole = whole:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
+	local sign = n < 0 and '-' or ''
+	return sign .. whole .. (fraction ~= '' and ('.' .. fraction) or '')
 end
 
 local DEG = string.char(176)
