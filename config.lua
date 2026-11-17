@@ -3,7 +3,7 @@ return {
 	REFRESH_INTERVAL = 0.05,
 
 	-- Temperature display unit (true = Fahrenheit, false = Celsius)
-	TEMP_IN_F = true,
+	TEMP_IN_F = false,
 
 	-- Wireless modem mode (true = receive data wirelessly, false = direct cable)
 	IS_WIRELESS = false,
@@ -24,6 +24,16 @@ return {
 	SAFETY_HEATED_MAX = 99,  -- %
 	SAFETY_WASTE_MAX = 99,   -- %
 	SAFETY_DMG_WARN = 20,    -- %
+
+	-- Enable or disable each safety condition independently (true = enabled).
+	SAFETY_ENABLE_COOLANT = true,
+	SAFETY_ENABLE_FUEL = true,
+	SAFETY_ENABLE_HEATED = true,
+	SAFETY_ENABLE_WASTE = true,
+	SAFETY_ENABLE_DMG_WARN = true,
+	SAFETY_ENABLE_DMG_HIGH = true,
+	SAFETY_ENABLE_TEMP = true,
+	SAFETY_ENABLE_REDSTONE = true,
 
 	-- Auto-restart thresholds after non-high danger shutdown
 	SAFETY_RESTART_COOLANT_MIN = 15, -- %
