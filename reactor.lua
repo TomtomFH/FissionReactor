@@ -315,6 +315,7 @@ local function drawLayout()
 end
 local function draw()
 	w, h = term.getSize()
+	local redrawAll = layoutDirty
 	if layoutDirty then drawLayout() end
 	local rightW = max(15, floor(w * 0.23))
 	if w - rightW < 25 then rightW = max(12, w - 25) end
@@ -338,6 +339,9 @@ local function draw()
 				if abs(v-old)>0.01 then changed[k]=true end
 			elseif v ~= old then changed[k]=true end
 		end
+	end
+	if redrawAll or changed.w or changed.h then
+		for k in pairs(snap) do changed[k] = true end
 	end
 	prevSnapshot = snap
 	if changed.w or changed.h then layoutDirty=true; drawLayout() end
