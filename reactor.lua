@@ -235,12 +235,6 @@ local function toggleOnOff()
 	end
 end
 
-local function toggleSafetyMode()
-	safetyMode = not safetyMode
-	if not safetyMode then resetSafetyShutdown() end
-	layoutDirty = true
-end
-
 local layoutDirty = true
 local prevSnapshot = nil
 local safetyChecks = {
@@ -451,13 +445,13 @@ local function autoRedraw()
 				end
 			else
 				if safetyShutdown and (not safetyHighDanger) then
-					local allSafe = (coolant >= SAFETY_RESTART_COOLANT_MIN)
-						and (fuel >= SAFETY_RESTART_FUEL_MIN)
-						and (heated <= SAFETY_RESTART_HEATED_MAX)
-						and (waste <= SAFETY_RESTART_WASTE_MAX)
-						and (tempF <= SAFETY_RESTART_TEMP_MAX)
-						and (dmg <= SAFETY_RESTART_DMG_MAX)
-						and not isRedstoneTriggered()
+					local allSafe = (not safetyChecks[1].enabled or coolant >= SAFETY_RESTART_COOLANT_MIN)
+						and (not safetyChecks[2].enabled or fuel >= SAFETY_RESTART_FUEL_MIN)
+						and (not safetyChecks[3].enabled or heated <= SAFETY_RESTART_HEATED_MAX)
+						and (not safetyChecks[4].enabled or waste <= SAFETY_RESTART_WASTE_MAX)
+						and (not safetyChecks[7].enabled or tempF <= SAFETY_RESTART_TEMP_MAX)
+						and (not (safetyChecks[5].enabled or safetyChecks[6].enabled) or dmg <= SAFETY_RESTART_DMG_MAX)
+						and (not safetyChecks[8].enabled or not isRedstoneTriggered())
 					if allSafe then
 						resetSafetyShutdown()
 						r.setStatus(true)
