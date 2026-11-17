@@ -374,7 +374,7 @@ local function draw()
 		drawText(rightX+1,statusH+2,'Heat Rate: '..(snap.heatRate and (fmt(snap.heatRate)..' mB/t') or 'n/a'),colors.white,colors.gray,rightW-2)
 		drawText(rightX+1,statusH+3,'Damage: '..(snap.dmg and (round(snap.dmg)..'%') or 'n/a'),colors.white,colors.gray,rightW-2)
 		local t=convertTemp(snap.temp)
-		drawText(rightX+1,statusH+4,'Temp: '..(t and (fmt(t)..DEG..'C') or 'n/a'),colors.white,colors.gray,rightW-2)
+		drawText(rightX+1,statusH+4,'Temp: '..(t and (fmt(t)..DEG..TEMP_UNIT) or 'n/a'),colors.white,colors.gray,rightW-2)
 	end
 	local listY = topH+1
 	for i,check in ipairs(safetyChecks) do
