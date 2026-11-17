@@ -72,6 +72,7 @@ else
 
 	print("Installing Display Computer...")
 	shell.run("wget " .. BASE .. "functions.lua functions.lua")
+	shell.run("wget " .. BASE .. "update.lua update.lua")
 	shell.run("wget " .. BASE .. "config.lua config.lua")
 	shell.run("wget " .. BASE .. "reactor.lua reactor.lua")
 	shell.run("cp reactor.lua startup.lua")
