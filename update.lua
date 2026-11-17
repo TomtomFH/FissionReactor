@@ -22,6 +22,7 @@ if fs.exists("startup.lua") then
 	end
 end
 
+download("version.txt")
 download("functions.lua")
 download("reactor.lua")
 download("reactor-modem.lua")
