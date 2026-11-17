@@ -4,9 +4,13 @@ local BASE = "https://raw.githubusercontent.com/TomtomFH/FissionReactor/refs/hea
 
 local function download(file)
 	print("Updating " .. file .. "...")
-	local ok = shell.run("wget", "-f", BASE .. file, file)
-	if not ok then
-		error("Failed to download " .. file .. ". Check the connection and try again.")
+	-- Use the complete URL in one command string for CC:Tweaked's wget.
+	if fs.exists(file) then
+		fs.delete(file)
+	end
+	local ok = shell.run("wget " .. BASE .. file .. " " .. file)
+	if not ok or not fs.exists(file) then
+		error("Failed to download " .. file .. ". Check the internet connection and try again.")
 	end
 end
 
@@ -27,6 +31,10 @@ download("functions.lua")
 download("reactor.lua")
 download("reactor-modem.lua")
 
+-- Remove the existing startup file first; fs.copy does not overwrite it.
+if fs.exists("startup.lua") then
+	fs.delete("startup.lua")
+end
 if bridgeMode then
 	fs.copy("reactor-modem.lua", "startup.lua")
 else
