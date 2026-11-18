@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.4'
+local VERSION = '1.0.5'
 local VERSION_STATUS = 'OUTDATED'
 
 local term = _G.term
@@ -306,10 +306,6 @@ local function drawLayout()
 	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 2, 'Cool <10/current', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 3, 'Dmg >0/current', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 4, 'Hot >99/current', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 5, 'Wst >99/current', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 6, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 7, 'Status: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
 
