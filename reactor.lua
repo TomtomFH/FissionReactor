@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.3'
+local VERSION = '1.0.4'
 local VERSION_STATUS = 'OUTDATED'
 
 local term = _G.term
@@ -306,12 +306,14 @@ local function drawLayout()
 	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 3, 'Coolant trip: 10%', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 4, 'Damage trip: > 0%', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 5, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 6, 'Status: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 2, 'Cool <10/current', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 3, 'Dmg >0/current', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 4, 'Hot >99/current', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 5, 'Wst >99/current', colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 6, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 7, 'Status: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
 
-	local updateY = topH + 8
+	local updateY = topH + 9
 	local rebootY = topH + 10
 	if rebootY > h then
 		updateY = h - 2
@@ -382,6 +384,15 @@ local function draw()
 			local valueText = exact .. ' (' .. pctText .. ')'
 			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
 		end
+	end
+	if changed.cool or changed.dmg or changed.hot or changed.waste then
+		local function pct(v)
+			return v ~= nil and (fmt(v) .. '%') or 'n/a'
+		end
+		drawText(rightX + 1, topH + 2, 'Cool <10/' .. pct(snap.cool), colors.white, colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 3, 'Dmg >0/' .. pct(snap.dmg), colors.white, colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 4, 'Hot >99/' .. pct(snap.hot), colors.white, colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 5, 'Wst >99/' .. pct(snap.waste), colors.white, colors.gray, rightW - 2)
 	end
 	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
 		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
