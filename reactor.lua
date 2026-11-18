@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.6'
+local VERSION = '1.0.7'
 local VERSION_STATUS = 'OUTDATED'
 
 local term = _G.term
@@ -388,14 +388,17 @@ local function draw()
 		restartText = 'Restart: ' .. math.max(0, math.ceil(damageRestartAt - osClock())) .. 's'
 	end
 	drawText(rightX + 1, topH + 6, restartText, colors.white, colors.gray, rightW - 2)
-	if changed.cool or changed.dmg or changed.hot or changed.waste then
+	if changed.cool or changed.dmg or changed.hot or changed.waste or redrawAll then
 		local function pct(v)
 			return v ~= nil and (fmt(v) .. '%') or 'n/a'
 		end
-		drawText(rightX + 1, topH + 2, 'Cool <10/' .. pct(snap.cool), colors.white, colors.gray, rightW - 2)
-		drawText(rightX + 1, topH + 3, 'Dmg >0/' .. pct(snap.dmg), colors.white, colors.gray, rightW - 2)
-		drawText(rightX + 1, topH + 4, 'Hot >99/' .. pct(snap.hot), colors.white, colors.gray, rightW - 2)
-		drawText(rightX + 1, topH + 5, 'Wst >99/' .. pct(snap.waste), colors.white, colors.gray, rightW - 2)
+		local function safetyColor(tripped)
+			return tripped and colors.red or colors.white
+		end
+		drawText(rightX + 1, topH + 2, 'Cool <10/' .. pct(snap.cool), safetyColor(snap.cool < SAFETY_COOLANT_MIN), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 3, 'Dmg >0/' .. pct(snap.dmg), safetyColor(snap.dmg > 0), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 4, 'Hot >99/' .. pct(snap.hot), safetyColor(snap.hot > SAFETY_HEATED_MAX), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 5, 'Wst >99/' .. pct(snap.waste), safetyColor(snap.waste > SAFETY_WASTE_MAX), colors.gray, rightW - 2)
 	end
 	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
 		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
