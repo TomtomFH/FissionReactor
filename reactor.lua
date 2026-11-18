@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.7'
+local VERSION = '1.0.8'
 local VERSION_STATUS = 'OUTDATED'
 
 local term = _G.term
@@ -387,6 +387,7 @@ local function draw()
 	if safetyShutdown and safetyHighDanger and damageRestartAt then
 		restartText = 'Restart: ' .. math.max(0, math.ceil(damageRestartAt - osClock())) .. 's'
 	end
+	drawText(rightX + 1, topH + 6, string.rep(' ', rightW - 2), colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 6, restartText, colors.white, colors.gray, rightW - 2)
 	if changed.cool or changed.dmg or changed.hot or changed.waste or redrawAll then
 		local function pct(v)
