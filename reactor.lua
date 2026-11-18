@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.1'
+local VERSION = '1.0.2'
 local VERSION_STATUS = 'CHECKING'
 
 local term = _G.term
@@ -124,6 +124,13 @@ local function resetSafetyShutdown()
 	safetyShutdown = false
 	safetyHighDanger = false
 	safetyLastReason = nil
+end
+
+-- Redstone alarm on the top face while a failsafe shutdown is active.
+local function updateFailsafeRedstone()
+	if rs and type(rs.setOutput) == 'function' then
+		pcall(rs.setOutput, 'top', safetyShutdown)
+	end
 end
 
 local function drawBtn(b, _, bg, fg)
@@ -458,6 +465,7 @@ local function autoRedraw()
 			end
 		end
 
+		updateFailsafeRedstone()
 		draw()
 		osSleep(REFRESH_INTERVAL)
 	end
