@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.5'
+local VERSION = '1.0.6'
 local VERSION_STATUS = 'OUTDATED'
 
 local term = _G.term
@@ -111,6 +111,7 @@ local w, h = term.getSize()
 local safetyShutdown = false
 local safetyHighDanger = false
 local safetyLastReason = nil
+local damageRestartAt = nil
 
 -- Fixed safety limits: intentionally not configurable from config.lua or the UI.
 local SAFETY_COOLANT_MIN = 10
@@ -124,6 +125,7 @@ local function resetSafetyShutdown()
 	safetyShutdown = false
 	safetyHighDanger = false
 	safetyLastReason = nil
+	damageRestartAt = nil
 end
 
 -- Redstone alarm on the top face while a failsafe shutdown is active.
@@ -306,11 +308,11 @@ local function drawLayout()
 	drawText(rightX + 1, statusH + 4, 'Damage:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 6, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 7, 'Status: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 7, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 8, 'Status: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
 
-	local updateY = topH + 9
-	local rebootY = topH + 10
+	local updateY = topH + 10
+	local rebootY = topH + 11
 	if rebootY > h then
 		updateY = h - 2
 		rebootY = h
@@ -381,6 +383,11 @@ local function draw()
 			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
 		end
 	end
+	local restartText = 'Restart: --'
+	if safetyShutdown and safetyHighDanger and damageRestartAt then
+		restartText = 'Restart: ' .. math.max(0, math.ceil(damageRestartAt - osClock())) .. 's'
+	end
+	drawText(rightX + 1, topH + 6, restartText, colors.white, colors.gray, rightW - 2)
 	if changed.cool or changed.dmg or changed.hot or changed.waste then
 		local function pct(v)
 			return v ~= nil and (fmt(v) .. '%') or 'n/a'
@@ -459,6 +466,23 @@ local function autoRedraw()
 				safetyHighDanger = dmg > 0
 				safetyLastReason = reason
 				status = false
+			end
+		elseif safetyShutdown and safetyHighDanger then
+			if dmg > 0 then
+				damageRestartAt = nil
+			else
+				if not damageRestartAt then
+					damageRestartAt = osClock() + 60
+				end
+				local countdownDone = osClock() >= damageRestartAt
+				local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
+					and heated <= SAFETY_RESTART_HEATED_MAX
+					and waste <= SAFETY_RESTART_WASTE_MAX
+				if countdownDone and allSafe then
+					resetSafetyShutdown()
+					r.setStatus(true)
+					status = true
+				end
 			end
 		elseif safetyShutdown and not safetyHighDanger then
 			local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
