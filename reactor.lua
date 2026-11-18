@@ -4,8 +4,8 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.8'
-local VERSION_STATUS = 'OUTDATED'
+local VERSION = '1.0.9'
+local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
 local colors = _G.colors or _G.colours
@@ -309,7 +309,7 @@ local function drawLayout()
 	drawText(rightX + 1, statusH + 5, 'Temp:', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 1, 'Safety: FIXED', colors.white, colors.gray, rightW - 2)
 	drawText(rightX + 1, topH + 7, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
-	drawText(rightX + 1, topH + 8, 'Status: ' .. VERSION_STATUS, colors.white, colors.gray, rightW - 2)
+	drawText(rightX + 1, topH + 8, 'Latest: ' .. LATEST_VERSION, colors.white, colors.gray, rightW - 2)
 
 	local updateY = topH + 10
 	local rebootY = topH + 11
@@ -518,10 +518,10 @@ local function versionChecker()
 			response.close()
 			if latest then latest = latest:gsub('%s+', '') end
 		end
-		if latest == VERSION then
-			VERSION_STATUS = 'LATEST'
+		if latest then
+			LATEST_VERSION = latest
 		else
-			VERSION_STATUS = 'OUTDATED'
+			LATEST_VERSION = 'UNKNOWN'
 		end
 		layoutDirty = true
 		draw()
