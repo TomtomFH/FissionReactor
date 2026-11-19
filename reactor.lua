@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.0.9'
+local VERSION = '1.1.0'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -397,7 +397,7 @@ local function draw()
 			return tripped and colors.red or colors.white
 		end
 		drawText(rightX + 1, topH + 2, 'Cool <10/' .. pct(snap.cool), safetyColor(snap.cool < SAFETY_COOLANT_MIN), colors.gray, rightW - 2)
-		drawText(rightX + 1, topH + 3, 'Dmg >0/' .. pct(snap.dmg), safetyColor(snap.dmg > 0), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 3, 'Dmg >0/' .. pct(snap.dmg), safetyColor(snap.dmg ~= nil and snap.dmg > 0), colors.gray, rightW - 2)
 		drawText(rightX + 1, topH + 4, 'Hot >99/' .. pct(snap.hot), safetyColor(snap.hot > SAFETY_HEATED_MAX), colors.gray, rightW - 2)
 		drawText(rightX + 1, topH + 5, 'Wst >99/' .. pct(snap.waste), safetyColor(snap.waste > SAFETY_WASTE_MAX), colors.gray, rightW - 2)
 	end
