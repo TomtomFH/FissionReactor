@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.1.0'
+local VERSION = '1.1.1'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -338,10 +338,10 @@ local function draw()
 	local snap = {
 		active=r.getStatus(), dmg=r.getDamage(), temp=r.getTemp(), heatRate=r.getHeatingRate(),
 		burnRate=r.getBurnRate(),
-		fuel=r.getFuel('percent') or 0, fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
-		waste=r.getWaste('percent') or 0, wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
-		cool=r.getCoolant('percent') or 0, coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
-		hot=r.getHeatedCoolant('percent') or 0, hotAmount=r.getHeatedCoolant(), hotMax=r.getHeatedCoolant('max'),
+		fuel=r.getFuel('percent'), fuelAmount=r.getFuel(), fuelMax=r.getFuel('max'),
+		waste=r.getWaste('percent'), wasteAmount=r.getWaste(), wasteMax=r.getWaste('max'),
+		cool=r.getCoolant('percent'), coolAmount=r.getCoolant(), coolMax=r.getCoolant('max'),
+		hot=r.getHeatedCoolant('percent'), hotAmount=r.getHeatedCoolant(), hotMax=r.getHeatedCoolant('max'),
 		w=w,h=h
 	}
 	local changed = {}
@@ -360,10 +360,10 @@ local function draw()
 	end
 	prevSnapshot = snap
 	local resources = {
-		{key='cool', label='Coolant', pct=snap.cool, color=colors.lightBlue},
-		{key='fuel', label='Fuel', pct=snap.fuel, color=colors.gray},
-		{key='hot', label='Heated Coolant', pct=snap.hot, color=colors.pink},
-		{key='waste', label='Waste', pct=snap.waste, color=colors.brown},
+		{key='cool', label='Coolant', pct=snap.cool or 0, color=colors.lightBlue},
+		{key='fuel', label='Fuel', pct=snap.fuel or 0, color=colors.gray},
+		{key='hot', label='Heated Coolant', pct=snap.hot or 0, color=colors.pink},
+		{key='waste', label='Waste', pct=snap.waste or 0, color=colors.brown},
 	}
 	local boxH = floor(h/4)
 	for i,res in ipairs(resources) do
@@ -377,7 +377,7 @@ local function draw()
 			local amount = snap[amountKey]
 			local capacity = snap[maxKey]
 			local exact = (amount ~= nil and capacity ~= nil) and (fmt(amount)..' / '..fmt(capacity)) or (amount ~= nil and fmt(amount) or 'n/a')
-			local pctText = fmtStr('%d%%',floor(res.pct+0.5))
+			local pctText = fmtStr('%d%%',floor((res.pct or 0)+0.5))
 			drawText(2,y,res.label,colors.white,colors.black,leftW-3)
 			local valueText = exact .. ' (' .. pctText .. ')'
 			drawText(max(2,leftW-#valueText-1),y,valueText,colors.white,colors.black,leftW)
@@ -396,10 +396,10 @@ local function draw()
 		local function safetyColor(tripped)
 			return tripped and colors.red or colors.white
 		end
-		drawText(rightX + 1, topH + 2, 'Cool <10/' .. pct(snap.cool), safetyColor(snap.cool < SAFETY_COOLANT_MIN), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 2, 'Cool <10/' .. pct(snap.cool), safetyColor(type(snap.cool) == 'number' and snap.cool < SAFETY_COOLANT_MIN), colors.gray, rightW - 2)
 		drawText(rightX + 1, topH + 3, 'Dmg >0/' .. pct(snap.dmg), safetyColor(snap.dmg ~= nil and snap.dmg > 0), colors.gray, rightW - 2)
-		drawText(rightX + 1, topH + 4, 'Hot >99/' .. pct(snap.hot), safetyColor(snap.hot > SAFETY_HEATED_MAX), colors.gray, rightW - 2)
-		drawText(rightX + 1, topH + 5, 'Wst >99/' .. pct(snap.waste), safetyColor(snap.waste > SAFETY_WASTE_MAX), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 4, 'Hot >99/' .. pct(snap.hot), safetyColor(type(snap.hot) == 'number' and snap.hot > SAFETY_HEATED_MAX), colors.gray, rightW - 2)
+		drawText(rightX + 1, topH + 5, 'Wst >99/' .. pct(snap.waste), safetyColor(type(snap.waste) == 'number' and snap.waste > SAFETY_WASTE_MAX), colors.gray, rightW - 2)
 	end
 	if changed.active or changed.dmg or changed.temp or changed.heatRate or changed.burnRate then
 		local btnColor = snap.active and colors.lime or (safetyShutdown and (safetyHighDanger and colors.magenta or colors.orange) or colors.red)
@@ -446,20 +446,20 @@ local function autoRedraw()
 	while true do
 		local status = r.getStatus()
 
-		local coolant = r.getCoolant('percent') or 0
-		local heated = r.getHeatedCoolant('percent') or 0
-		local waste = r.getWaste('percent') or 0
-		local dmg = r.getDamage() or 0
+		local coolant = r.getCoolant('percent')
+		local heated = r.getHeatedCoolant('percent')
+		local waste = r.getWaste('percent')
+		local dmg = r.getDamage()
 
 		if status then
 			local reason = nil
-			if dmg > 0 then
+			if type(dmg) == 'number' and dmg > 0 then
 				reason = 'Damage detected'
-			elseif coolant < SAFETY_COOLANT_MIN then
+			elseif type(coolant) == 'number' and coolant < SAFETY_COOLANT_MIN then
 				reason = 'Coolant <' .. SAFETY_COOLANT_MIN .. '%'
-			elseif heated > SAFETY_HEATED_MAX then
+			elseif type(heated) == 'number' and heated > SAFETY_HEATED_MAX then
 				reason = 'Heated Coolant >' .. SAFETY_HEATED_MAX .. '%'
-			elseif waste > SAFETY_WASTE_MAX then
+			elseif type(waste) == 'number' and waste > SAFETY_WASTE_MAX then
 				reason = 'Waste >' .. SAFETY_WASTE_MAX .. '%'
 			end
 
@@ -472,16 +472,16 @@ local function autoRedraw()
 				status = false
 			end
 		elseif safetyShutdown and safetyHighDanger then
-			if dmg > 0 then
+			if type(dmg) ~= 'number' or dmg > 0 then
 				damageRestartAt = nil
 			else
 				if not damageRestartAt then
 					damageRestartAt = osClock() + 60
 				end
 				local countdownDone = osClock() >= damageRestartAt
-				local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
-					and heated <= SAFETY_RESTART_HEATED_MAX
-					and waste <= SAFETY_RESTART_WASTE_MAX
+				local allSafe = type(coolant) == 'number' and coolant >= SAFETY_RESTART_COOLANT_MIN
+					and type(heated) == 'number' and heated <= SAFETY_RESTART_HEATED_MAX
+					and type(waste) == 'number' and waste <= SAFETY_RESTART_WASTE_MAX
 				if countdownDone and allSafe then
 					resetSafetyShutdown()
 					r.setStatus(true)
@@ -489,10 +489,10 @@ local function autoRedraw()
 				end
 			end
 		elseif safetyShutdown and not safetyHighDanger then
-			local allSafe = coolant >= SAFETY_RESTART_COOLANT_MIN
-				and heated <= SAFETY_RESTART_HEATED_MAX
-				and waste <= SAFETY_RESTART_WASTE_MAX
-				and dmg <= 0
+			local allSafe = type(coolant) == 'number' and coolant >= SAFETY_RESTART_COOLANT_MIN
+				and type(heated) == 'number' and heated <= SAFETY_RESTART_HEATED_MAX
+				and type(waste) == 'number' and waste <= SAFETY_RESTART_WASTE_MAX
+				and type(dmg) == 'number' and dmg <= 0
 			if allSafe then
 				resetSafetyShutdown()
 				r.setStatus(true)
@@ -538,15 +538,44 @@ local function modemListener()
 	end
 end
 
+local function supervise(name, fn)
+	while true do
+		local ok, err = pcall(fn)
+		if not ok then
+			-- Keep the UI process alive through chunk unloads/peripheral detach errors.
+			pcall(function()
+				term.setBackgroundColor(colors.black)
+				term.setTextColor(colors.red)
+				term.setCursorPos(1, h)
+				term.write((name .. ' recovering: ' .. tostring(err)):sub(1, w))
+			end)
+			layoutDirty = true
+			prevSnapshot = nil
+			osSleep(2)
+		else
+			osSleep(0.5)
+		end
+	end
+end
+
 draw()
 if parallel and parallel.waitForAny then
 	if IS_WIRELESS then
-		parallel.waitForAny(autoRedraw, inputLoop, modemListener, versionChecker)
+		parallel.waitForAny(
+			function() supervise('Monitor', autoRedraw) end,
+			function() supervise('Input', inputLoop) end,
+			function() supervise('Modem', modemListener) end,
+			function() supervise('Version check', versionChecker) end
+		)
 	else
-		parallel.waitForAny(autoRedraw, inputLoop, versionChecker)
+		parallel.waitForAny(
+			function() supervise('Monitor', autoRedraw) end,
+			function() supervise('Input', inputLoop) end,
+			function() supervise('Version check', versionChecker) end
+		)
 	end
 else
-	autoRedraw()
+	supervise('Monitor', autoRedraw)
 end
 
 term.setBackgroundColor(colors.black)
