@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.1.6'
+local VERSION = '1.1.7'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -433,10 +433,10 @@ local function draw()
 			return tripped and colors.red or colors.white
 		end
 		local safetyRows = {
-			{key='coolant', y=topH+2, label='Cool <10/' .. pct(snap.cool), tripped=type(snap.cool)=='number' and snap.cool<SAFETY_COOLANT_MIN},
-			{key='damage', y=topH+3, label='Dmg >0/' .. pct(snap.dmg), tripped=type(snap.dmg)=='number' and snap.dmg>0},
-			{key='heated', y=topH+4, label='Hot >99/' .. pct(snap.hot), tripped=type(snap.hot)=='number' and snap.hot>SAFETY_HEATED_MAX},
-			{key='waste', y=topH+5, label='Wst >99/' .. pct(snap.waste), tripped=type(snap.waste)=='number' and snap.waste>SAFETY_WASTE_MAX},
+			{key='coolant', y=topH+2, label='Coolant <10/' .. pct(snap.cool), tripped=type(snap.cool)=='number' and snap.cool<SAFETY_COOLANT_MIN},
+			{key='damage', y=topH+3, label='Damage >0/' .. pct(snap.dmg), tripped=type(snap.dmg)=='number' and snap.dmg>0},
+			{key='heated', y=topH+4, label='Heat >99/' .. pct(snap.hot), tripped=type(snap.hot)=='number' and snap.hot>SAFETY_HEATED_MAX},
+			{key='waste', y=topH+5, label='Waste >99/' .. pct(snap.waste), tripped=type(snap.waste)=='number' and snap.waste>SAFETY_WASTE_MAX},
 		}
 		for _, row in ipairs(safetyRows) do
 			local enabled = safetyEnabled[row.key]
