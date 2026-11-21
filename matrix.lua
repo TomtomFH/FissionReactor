@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.4'
+local VERSION = '1.2.5'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -16,6 +16,15 @@ local mon = peripheral and peripheral.find and peripheral.find('monitor') or ter
 if mon and mon.setTextScale then mon.setTextScale(0.5) end
 local useMon = mon ~= term
 if useMon then term.redirect(mon) end
+
+do
+  local target = colors.green
+  if mon and mon.setPaletteColor then
+    mon.setPaletteColor(target, 0.58, 0.76, 0.58)
+  elseif term and term.setPaletteColor then
+    term.setPaletteColor(target, 0.58, 0.76, 0.58)
+  end
+end
 
 do
   local target = colors.pink
