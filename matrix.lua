@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.3.1'
+local VERSION = '1.3.2'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -168,6 +168,33 @@ local function drawBar(x, y, width, height, pct, fill)
   term.setBackgroundColor(colors.black)
 end
 
+local function drawGradientBar(x, y, width, height, pct)
+  pct = math.max(0, math.min(100, tonumber(pct) or 0))
+  local filled = floor(width * pct / 100 + 0.5)
+  local bands = {
+    {0, 20, colors.red},
+    {20, 40, colors.orange},
+    {40, 60, colors.yellow},
+    {60, 80, colors.lime},
+    {80, 100, colors.green}
+  }
+  for row = 0, height - 1 do
+    term.setCursorPos(x, y + row)
+    term.setBackgroundColor(colors.black)
+    term.write(string.rep(' ', width))
+    if filled > 0 then
+      local color = colors.green
+      for _, band in ipairs(bands) do
+        if pct <= band[2] then color = band[3]; break end
+      end
+      term.setCursorPos(x, y + row)
+      term.setBackgroundColor(color)
+      term.write(string.rep(' ', filled))
+    end
+  end
+  term.setBackgroundColor(colors.black)
+end
+
 local function runUpdater()
   if shell and shell.run then shell.run('update') end
 end
@@ -266,7 +293,9 @@ local function draw()
     local label = matrix and 'ONLINE' or 'OFFLINE'
     drawBtn({x=rightX,y=1,w=rightW,h=statusH,l=label},nil,bg,colors.white)
   end
-  local boxH = floor(h / 4)
+  local boxH = max(4, floor(h / 4))
+  local inputPct = (input and transfer and transfer > 0) and (input / transfer * 100) or 0
+  local outputPct = (output and transfer and transfer > 0) and (output / transfer * 100) or 0
   if changed.energy or changed.capacity or changed.pct or changed.online or redrawAll then
     local y = 1
     local barHeight = max(1, boxH - 1)
@@ -274,6 +303,20 @@ local function draw()
     local value = valid and (fmt(energy) .. ' / ' .. fmt(capacity) .. ' (' .. fmtStr('%d%%', floor(pct + 0.5)) .. ')') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
     drawBar(1, y + 1, leftW, barHeight, valid and pct or 0, colors.green)
+  end
+  if changed.input or changed.transfer or changed.online or redrawAll then
+    local y = boxH + 1
+    drawText(2, y, 'Input', colors.white, colors.black, leftW - 3)
+    local value = input and transfer and (fmt(input) .. ' / ' .. fmt(transfer) .. ' FE/t') or 'n/a'
+    drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
+    drawGradientBar(1, y + 1, leftW, max(1, boxH - 1), inputPct)
+  end
+  if changed.output or changed.transfer or changed.online or redrawAll then
+    local y = boxH * 2 + 1
+    drawText(2, y, 'Output', colors.white, colors.black, leftW - 3)
+    local value = output and transfer and (fmt(output) .. ' / ' .. fmt(transfer) .. ' FE/t') or 'n/a'
+    drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
+    drawGradientBar(1, y + 1, leftW, max(1, boxH - 1), outputPct)
   end
   if changed.input or changed.output or changed.transfer or changed.online or redrawAll then
     drawText(rightX+1,statusH+2,'Energy Input: '..(input and fmt(input) or 'n/a'),colors.white,colors.gray,rightW-2)
