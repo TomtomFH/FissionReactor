@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.5'
+local VERSION = '1.2.6'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -20,9 +20,9 @@ if useMon then term.redirect(mon) end
 do
   local target = colors.green
   if mon and mon.setPaletteColor then
-    mon.setPaletteColor(target, 0.58, 0.76, 0.58)
+    mon.setPaletteColor(target, 115 / 255, 186 / 255, 132 / 255)
   elseif term and term.setPaletteColor then
-    term.setPaletteColor(target, 0.58, 0.76, 0.58)
+    term.setPaletteColor(target, 115 / 255, 186 / 255, 132 / 255)
   end
 end
 
@@ -221,7 +221,7 @@ local function draw()
     drawText(2, y, 'Energy', colors.white, colors.black, leftW - 3)
     local value = valid and (fmt(energy) .. ' / ' .. fmt(capacity) .. ' (' .. fmtStr('%d%%', floor(pct + 0.5)) .. ')') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
-    drawBar(1, y + 1, leftW, barHeight, valid and pct or 0, colors.lime)
+    drawBar(1, y + 1, leftW, barHeight, valid and pct or 0, colors.green)
   end
   if changed.input or changed.output or changed.transfer or changed.online or redrawAll then
     drawText(rightX+1,statusH+2,'Energy Input: '..(input and fmt(input) or 'n/a'),colors.white,colors.gray,rightW-2)
@@ -230,8 +230,9 @@ local function draw()
   end
   if changed.tripped or changed.online or redrawAll then
     drawText(rightX+1,topH+1,'Safety: CHECKS',colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,topH+2,tripped and '[x] Energy >99%' or '[ ] Energy >99%',tripped and colors.red or colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,topH+3,tripped and 'Redstone: ON' or 'Redstone: OFF',tripped and colors.red or colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+2,'[x] Energy >99%',colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+3,' ',colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+2,'[x] Energy >99%',tripped and colors.red or colors.white,colors.gray,rightW-2)
   end
   if changed.latest or redrawAll then
     drawText(rightX+1,topH+5,'Version: '..VERSION,colors.white,colors.gray,rightW-2)
