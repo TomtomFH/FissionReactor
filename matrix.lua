@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.7'
+local VERSION = '1.2.8'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -11,6 +11,13 @@ local parallel = _G.parallel
 local floor, max = math.floor, math.max
 local abs = math.abs
 local fmtStr = string.format
+
+-- Mekanism reports energy in Joules; 1 FE = 2.5 J.
+local JOULES_PER_FE = 2.5
+local function joulesToFE(value)
+  if type(value) ~= 'number' then return nil end
+  return value / JOULES_PER_FE
+end
 
 local mon = peripheral and peripheral.find and peripheral.find('monitor') or term
 if mon and mon.setTextScale then mon.setTextScale(0.5) end
@@ -209,11 +216,13 @@ local function draw()
   if matrix then
     local ok, e, c = pcall(function() return matrix.getEnergy(), matrix.getMaxEnergy() end)
     if ok and type(e) == 'number' and type(c) == 'number' and c > 0 then
-      energy, capacity = e, c
-      input = readOptional(matrix, 'getLastInput')
-      output = readOptional(matrix, 'getLastOutput')
-      transfer = readOptional(matrix, 'getTransferCap')
-      pct = energy / capacity * 100
+      -- Convert all displayed energy quantities from Mekanism Joules to FE.
+      energy, capacity = joulesToFE(e), joulesToFE(c)
+      input = joulesToFE(readOptional(matrix, 'getLastInput'))
+      output = joulesToFE(readOptional(matrix, 'getLastOutput'))
+      transfer = joulesToFE(readOptional(matrix, 'getTransferCap'))
+      -- Conversion cancels in the ratio, so keep the failsafe percentage unchanged.
+      pct = e / c * 100
       valid = true
     end
   end
