@@ -1,4 +1,6 @@
 return {
+	-- Controller version is managed by the installer.
+
 	-- UI refresh interval (seconds)
 	REFRESH_INTERVAL = 0.05,
 
