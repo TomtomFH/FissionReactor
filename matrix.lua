@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.3.4'
+local VERSION = '1.3.5'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -343,20 +343,17 @@ local function draw()
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
     drawBar(1, y + 1, leftW, barHeight, valid and pct or 0, colors.green)
   end
+  -- Leave one complete bar-height of empty space after the energy storage bar.
+  -- Then show the input and output bars in consecutive sections.
   if changed.input or changed.transfer or changed.online or redrawAll then
-    local y = boxH + 1
+    local y = boxH * 2 + 1
     drawText(2, y, 'Input', colors.white, colors.black, leftW - 3)
     local value = input and transfer and (fmt(input) .. ' / ' .. fmt(transfer) .. ' FE/t') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
-    -- Keep the input-bar area as an intentionally empty row, matching the requested layout.
-    for row = 1, max(1, boxH - 1) do
-      term.setCursorPos(1, y + row)
-      term.setBackgroundColor(colors.black)
-      term.write(string.rep(' ', leftW))
-    end
+    drawGradientBar(1, y + 1, leftW, max(1, boxH - 1), inputPct)
   end
   if changed.output or changed.transfer or changed.online or redrawAll then
-    local y = boxH * 2 + 1
+    local y = boxH * 3 + 1
     drawText(2, y, 'Output', colors.white, colors.black, leftW - 3)
     local value = output and transfer and (fmt(output) .. ' / ' .. fmt(transfer) .. ' FE/t') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
