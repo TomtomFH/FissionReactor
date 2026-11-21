@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.3.6'
+local VERSION = '1.3.7'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -228,9 +228,6 @@ local function drawLayout()
     newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn,l=label}
   end
   add('status', rightX, 1, rightW, statusH, 'ONLINE', function() end)
-  drawText(rightX + 1, statusH + 2, 'Energy Input:', colors.white, colors.gray, rightW - 2)
-  drawText(rightX + 1, statusH + 3, 'Energy Output:', colors.white, colors.gray, rightW - 2)
-  drawText(rightX + 1, statusH + 4, 'Transfer Rate:', colors.white, colors.gray, rightW - 2)
   drawText(rightX + 1, topH + 1, 'Safety: CHECKS', colors.white, colors.gray, rightW - 2)
   add('energy_safety', rightX + 1, topH + 2, 3, 1, '[x]', toggleEnergySafety)
   drawText(rightX + 1, topH + 3, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
@@ -303,7 +300,7 @@ local function draw()
     local y = 1
     local barHeight = max(1, boxH - 1)
     drawText(2, y, 'Energy', colors.white, colors.black, leftW - 3)
-    local value = valid and (fmt(energy) .. ' / ' .. fmt(capacity) .. ' (' .. fmtStr('%d%%', floor(pct + 0.5)) .. ')') or 'n/a'
+    local value = valid and (fmt(energy) .. ' FE / ' .. fmt(capacity) .. ' FE (' .. fmtStr('%d%%', floor(pct + 0.5)) .. ')') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
     drawBar(1, y + 1, leftW, barHeight, valid and pct or 0, colors.green)
   end
@@ -322,11 +319,6 @@ local function draw()
     local value = output and transfer and (fmt(output) .. ' / ' .. fmt(transfer) .. ' FE/t') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
     drawGradientBar(1, y + 1, leftW, max(1, boxH - 1), outputPct)
-  end
-  if changed.input or changed.output or changed.transfer or changed.online or redrawAll then
-    drawText(rightX+1,statusH+2,'Energy Input: '..(input and fmt(input) or 'n/a'),colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,statusH+3,'Energy Output: '..(output and fmt(output) or 'n/a'),colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,statusH+4,'Transfer Rate: '..(transfer and fmt(transfer) or 'n/a'),colors.white,colors.gray,rightW-2)
   end
   if changed.tripped or changed.online or redrawAll then
     drawText(rightX+1,topH+1,'Safety: CHECKS',colors.white,colors.gray,rightW-2)
