@@ -1,15 +1,42 @@
--- Induction Matrix display and high-energy failsafe
-local VERSION = '1.2.2'
-local sides = {'top','bottom','left','right','front','back'}
-local rs = _G.rs or _G.redstone
-local peripheral = _G.peripheral
+-- Induction Matrix monitor and high-energy failsafe
+local VERSION = '1.2.3'
+local LATEST_VERSION = 'CHECKING'
+
 local term = _G.term
 local colors = _G.colors or _G.colours
-local sleep = _G.os.sleep
-local floor = math.floor
-local max = math.max
+local peripheral = _G.peripheral
+local osSleep = _G.os.sleep
+local pullEvent = _G.os.pullEvent
+local parallel = _G.parallel
+local floor, max = math.floor, math.max
+local abs = math.abs
+local fmtStr = string.format
+
+local mon = peripheral and peripheral.find and peripheral.find('monitor') or term
+if mon and mon.setTextScale then mon.setTextScale(0.5) end
+local useMon = mon ~= term
+if useMon then term.redirect(mon) end
+
+do
+  local target = colors.pink
+  if mon and mon.setPaletteColor then
+    mon.setPaletteColor(target, 0xF2 / 255, 0xD7 / 255, 0xB6 / 255)
+  elseif term and term.setPaletteColor then
+    term.setPaletteColor(target, 0xF2 / 255, 0xD7 / 255, 0xB6 / 255)
+  end
+end
+
+local RS_SIDES = {'top','bottom','left','right','front','back'}
+local rs = _G.rs or _G.redstone
+local buttons = {}
+local newButtons = {}
+local w, h = term.getSize()
+local layoutDirty = true
+local prevSnapshot = nil
+local safetyTriggered = false
 
 local function findMatrix()
+  if not peripheral then return nil end
   for _, name in ipairs(peripheral.getNames()) do
     if peripheral.getType(name) == 'inductionPort' then
       local obj = peripheral.wrap(name)
@@ -20,170 +47,217 @@ local function findMatrix()
   end
 end
 
-local function setAlarm(active)
+local function setFailsafeRedstone(active)
   if rs and type(rs.setOutput) == 'function' then
-    for _, side in ipairs(sides) do pcall(rs.setOutput, side, active) end
+    for _, side in ipairs(RS_SIDES) do pcall(rs.setOutput, side, active) end
   end
 end
-
-local mon = peripheral.find('monitor') or term
-if mon.setTextScale then mon.setTextScale(0.5) end
-local useMon = mon ~= term
-if useMon then term.redirect(mon) end
-local w, h = term.getSize()
-local buttons = {}
-local layoutDirty = true
-local last = {}
-local latest = 'CHECKING'
 
 local function fmt(n)
   if type(n) ~= 'number' then return 'n/a' end
-  local s = tostring(floor(n + 0.5))
-  local out = s:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
-  return out
-end
-
-local function text(x, y, value, fg, bg, width)
-  if y < 1 or y > h then return end
-  term.setCursorPos(x, y)
-  term.setTextColor(fg or colors.white)
-  term.setBackgroundColor(bg or colors.black)
-  value = tostring(value or '')
-  if width then value = value:sub(1, width) end
-  term.write(value)
-end
-
-local function button(id, x, y, bw, label, bg, fn)
-  if y < 1 or y > h then return end
-  buttons[id] = {x=x,y=y,w=bw,fn=fn}
-  term.setBackgroundColor(bg)
-  term.setTextColor(colors.white)
-  term.setCursorPos(x,y)
-  term.write(string.rep(' ',bw))
-  term.setCursorPos(x + max(0,floor((bw-#label)/2)),y)
-  term.write(label:sub(1,bw))
-end
-
-local function runUpdater()
-  if shell and shell.run then shell.run('update') end
-end
-local function reboot()
-  os.reboot()
-end
-
-local function drawLayout()
-  w,h = term.getSize()
-  term.setBackgroundColor(colors.black)
-  term.clear()
-  local rightW = max(19, floor(w*0.25))
-  if w-rightW < 24 then rightW = max(14,w-24) end
-  local leftW = w-rightW-1
-  local rightX = leftW+2
-  for y=1,h do
-    term.setCursorPos(rightX,y)
-    term.setBackgroundColor(colors.gray)
-    term.write(string.rep(' ',rightW))
-  end
-  term.setBackgroundColor(colors.black)
-  text(2,1,'INDUCTION MATRIX',colors.white,colors.black,leftW-2)
-  text(2,2,'ENERGY STORAGE',colors.lightGray,colors.black,leftW-2)
-  text(rightX+1,1,'',colors.white,colors.gray,rightW-2)
-  local statusH = max(2,floor(h*0.11))
-  button('status',rightX,1,rightW,'ONLINE',colors.lime,function() end)
-  text(rightX+1,statusH+1,'Energy Input:',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+3,'Energy Output:',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+5,'Transfer Rate:',colors.white,colors.gray,rightW-2)
-  local safetyY = max(statusH+8,floor(h*0.53))
-  text(rightX+1,safetyY,'Safety: CHECKS',colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+1,'[x] Energy >99%',colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+2,'    Redstone alarm',colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+4,'Version: '..VERSION,colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+5,'Latest: '..latest,colors.white,colors.gray,rightW-2)
-  local updateY = h-2
-  local rebootY = h-1
-  button('update',rightX+1,updateY,rightW-2,'UPDATE',colors.blue,runUpdater)
-  button('reboot',rightX+1,rebootY,rightW-2,'REBOOT',colors.red,reboot)
-  -- Large single energy bar, leaving room for the title and value.
-  text(2,4,'Stored Energy',colors.white,colors.black,leftW-2)
-  layoutDirty = false
-end
-
-local function drawBar(x,y,bw,bh,pct)
-  pct = math.max(0,math.min(100,tonumber(pct) or 0))
-  local filled = floor(bw*pct/100+0.5)
-  for row=0,bh-1 do
-    term.setCursorPos(x,y+row)
-    term.setBackgroundColor(colors.black)
-    term.write(string.rep(' ',bw))
-    if filled>0 then
-      term.setCursorPos(x,y+row)
-      term.setBackgroundColor(colors.lime)
-      term.write(string.rep(' ',filled))
-    end
-  end
-  term.setBackgroundColor(colors.black)
+  local rounded = fmtStr('%.2f', abs(n))
+  rounded = rounded:gsub('0+$', ''):gsub('%.$', '')
+  local whole, fraction = rounded:match('^(%d+)%.?(%d*)$')
+  if not whole then return tostring(n) end
+  whole = whole:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
+  return (n < 0 and '-' or '') .. whole .. (fraction ~= '' and ('.' .. fraction) or '')
 end
 
 local function readOptional(obj, method)
   if type(obj[method]) ~= 'function' then return nil end
   local ok, value = pcall(obj[method])
-  if ok and type(value)=='number' then return value end
+  if ok and type(value) == 'number' then return value end
   return nil
 end
 
-local function draw()
-  w,h = term.getSize()
-  if layoutDirty then drawLayout() end
-  local rightW = max(19,floor(w*0.25))
-  if w-rightW<24 then rightW=max(14,w-24) end
-  local leftW=w-rightW-1
-  local rightX=leftW+2
-  local statusH=max(2,floor(h*0.11))
-  local safetyY=max(statusH+8,floor(h*0.53))
-  local matrix,name=findMatrix()
-  local energy,capacity,input,output,transfer,pct
-  local valid=false
-  if matrix then
-    local ok,e,c=pcall(function() return matrix.getEnergy(),matrix.getMaxEnergy() end)
-    if ok and type(e)=='number' and type(c)=='number' and c>0 then
-      energy,capacity=e,c
-      input=readOptional(matrix,'getLastInput')
-      output=readOptional(matrix,'getLastOutput')
-      transfer=readOptional(matrix,'getTransferCap')
-      pct=energy/capacity*100
-      valid=true
+local function drawText(x, y, value, fg, bg, width)
+  if y < 1 or y > h then return end
+  value = tostring(value or '')
+  term.setCursorPos(x, y)
+  term.setTextColor(fg or colors.white)
+  term.setBackgroundColor(bg or colors.black)
+  if width then value = value:sub(1, width) end
+  term.write(value)
+end
+
+local function drawBtn(b, _, bg, fg)
+  local bh = b.h or 1
+  for i = 0, bh - 1 do
+    term.setCursorPos(b.x, b.y + i)
+    term.setBackgroundColor(bg or colors.blue)
+    term.write(string.rep(' ', b.w))
+  end
+  local label = b.l or ''
+  term.setCursorPos(b.x + max(0, floor((b.w - #label) / 2)), b.y + floor((bh - 1) / 2))
+  term.setTextColor(fg or colors.white)
+  term.write(label:sub(1, b.w))
+  term.setBackgroundColor(colors.black)
+end
+
+local function drawBar(x, y, width, height, pct, fill)
+  pct = math.max(0, math.min(100, tonumber(pct) or 0))
+  local filled = floor(width * pct / 100 + 0.5)
+  for row = 0, height - 1 do
+    term.setCursorPos(x, y + row)
+    term.setBackgroundColor(colors.black)
+    term.write(string.rep(' ', width))
+    if filled > 0 then
+      term.setCursorPos(x, y + row)
+      term.setBackgroundColor(fill)
+      term.write(string.rep(' ', filled))
     end
   end
-  local tripped=valid and pct>99
-  setAlarm(tripped)
-  local statusColor=matrix and colors.lime or colors.red
-  button('status',rightX,1,rightW,matrix and 'ONLINE' or 'OFFLINE',statusColor,function() end)
-
-  -- Keep the single large storage bar on the left.
-  text(2,1,'INDUCTION MATRIX',colors.white,colors.black,leftW-2)
-  text(2,2,'ENERGY STORAGE',colors.lightGray,colors.black,leftW-2)
-  local valueLine=valid and (fmt(energy)..' / '..fmt(capacity)..' FE  ('..string.format('%.2f',pct)..'%)') or 'Waiting for Induction Matrix...'
-  text(2,4,valueLine,colors.white,colors.black,leftW-2)
-  local barY=6
-  local barH=max(3,h-9)
-  drawBar(2,barY,leftW-2,barH,valid and pct or 0)
-  text(2,barY+barH+1,valid and (string.format('%.2f%% FULL',pct)) or 'NO MATRIX DATA',valid and (tripped and colors.red or colors.lime) or colors.red,colors.black,leftW-2)
-
-  text(rightX+1,statusH+1,'Energy Input:',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+2,input and (fmt(input)..' FE/t') or 'n/a',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+3,'Energy Output:',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+4,output and (fmt(output)..' FE/t') or 'n/a',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+5,'Transfer Rate:',colors.white,colors.gray,rightW-2)
-  text(rightX+1,statusH+6,transfer and (fmt(transfer)..' FE/t') or 'n/a',colors.white,colors.gray,rightW-2)
-
-  text(rightX+1,safetyY,'Safety: CHECKS',colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+1,tripped and '[x] Energy >99%' or '[ ] Energy >99%',tripped and colors.red or colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+2,tripped and '    REDSTONE: ON' or '    Redstone: OFF',tripped and colors.red or colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+4,'Version: '..VERSION,colors.white,colors.gray,rightW-2)
-  text(rightX+1,safetyY+5,'Latest: '..latest,colors.white,colors.gray,rightW-2)
-  button('update',rightX+1,h-2,rightW-2,'UPDATE',colors.blue,runUpdater)
-  button('reboot',rightX+1,h-1,rightW-2,'REBOOT',colors.red,reboot)
   term.setBackgroundColor(colors.black)
+end
+
+local function runUpdater()
+  if shell and shell.run then shell.run('update') end
+end
+
+local function rebootComputer()
+  _G.os.reboot()
+end
+
+local function drawLayout()
+  w, h = term.getSize()
+  term.setBackgroundColor(colors.black)
+  term.clear()
+  local rightW = max(15, floor(w * 0.23))
+  if w - rightW < 25 then rightW = max(12, w - 25) end
+  local leftW = w - rightW - 1
+  local rightX = leftW + 2
+  for y = 1, h do
+    term.setCursorPos(rightX, y)
+    term.setBackgroundColor(colors.gray)
+    term.write(string.rep(' ', rightW))
+  end
+  term.setBackgroundColor(colors.black)
+  drawText(2, 1, 'Energy', colors.white, colors.black, leftW - 2)
+  local topH = floor(h / 2)
+  local statusH = max(2, floor(topH / 5))
+  newButtons = {}
+  local function add(id, x, y, bw, bh, label, fn)
+    newButtons[id] = {x=x,y=y,w=bw,h=bh,fn=fn,l=label}
+  end
+  add('status', rightX, 1, rightW, statusH, 'ONLINE', function() end)
+  drawText(rightX + 1, statusH + 2, 'Energy Input:', colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, statusH + 3, 'Energy Output:', colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, statusH + 4, 'Transfer Rate:', colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, topH + 1, 'Safety: CHECKS', colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, topH + 2, '[ ] Energy >99%', colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, topH + 3, 'Redstone: OFF', colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, topH + 5, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
+  drawText(rightX + 1, topH + 6, 'Latest: ' .. LATEST_VERSION, colors.white, colors.gray, rightW - 2)
+  local updateY, rebootY = topH + 8, topH + 9
+  if rebootY > h then updateY, rebootY = h - 2, h - 1 end
+  add('update', rightX + 1, updateY, rightW - 2, 1, 'UPDATE', runUpdater)
+  add('reboot', rightX + 1, rebootY, rightW - 2, 1, 'REBOOT', rebootComputer)
+  drawBtn(newButtons.update, nil, colors.blue, colors.white)
+  drawBtn(newButtons.reboot, nil, colors.red, colors.white)
+  buttons = newButtons
+  layoutDirty = false
+end
+
+local function draw()
+  w, h = term.getSize()
+  local resized = prevSnapshot and (w ~= prevSnapshot.w or h ~= prevSnapshot.h)
+  local redrawAll = layoutDirty or resized
+  if redrawAll then layoutDirty = true; drawLayout() end
+  local rightW = max(15, floor(w * 0.23))
+  if w - rightW < 25 then rightW = max(12, w - 25) end
+  local leftW = w - rightW - 1
+  local rightX = leftW + 2
+  local topH = floor(h / 2)
+  local statusH = max(2, floor(topH / 5))
+  local matrix, name = findMatrix()
+  local energy, capacity, input, output, transfer, pct
+  local valid = false
+  if matrix then
+    local ok, e, c = pcall(function() return matrix.getEnergy(), matrix.getMaxEnergy() end)
+    if ok and type(e) == 'number' and type(c) == 'number' and c > 0 then
+      energy, capacity = e, c
+      input = readOptional(matrix, 'getLastInput')
+      output = readOptional(matrix, 'getLastOutput')
+      transfer = readOptional(matrix, 'getTransferCap')
+      pct = energy / capacity * 100
+      valid = true
+    end
+  end
+  local tripped = valid and pct > 99
+  safetyTriggered = tripped
+  setFailsafeRedstone(tripped)
+  local snap = {energy=energy,capacity=capacity,input=input,output=output,transfer=transfer,pct=pct,online=matrix~=nil,name=name,w=w,h=h,tripped=tripped,latest=LATEST_VERSION}
+  local changed = {}
+  if not prevSnapshot then
+    for k in pairs(snap) do changed[k] = true end
+  else
+    for k,v in pairs(snap) do
+      local old = prevSnapshot[k]
+      if type(v)=='number' and type(old)=='number' then
+        if abs(v-old)>0.01 then changed[k]=true end
+      elseif v ~= old then changed[k]=true end
+    end
+  end
+  if redrawAll then for k in pairs(snap) do changed[k]=true end end
+  prevSnapshot = snap
+  if changed.online or redrawAll then
+    local bg = matrix and colors.lime or colors.red
+    local label = matrix and 'ONLINE' or 'OFFLINE'
+    drawBtn({x=rightX,y=1,w=rightW,h=statusH,l=label},nil,bg,colors.white)
+  end
+  if changed.energy or changed.capacity or changed.pct or changed.online or redrawAll then
+    drawText(2,1,'Energy',colors.white,colors.black,leftW-2)
+    local value = valid and (fmt(energy)..' / '..fmt(capacity)..' ('..fmtStr('%d%%',floor(pct+0.5))..')') or 'Waiting for Induction Matrix...'
+    drawText(2,2,value,colors.white,colors.black,leftW-2)
+    drawBar(1,3,leftW,max(1,h-3),valid and pct or 0,colors.lime)
+  end
+  if changed.input or changed.output or changed.transfer or changed.online or redrawAll then
+    drawText(rightX+1,statusH+2,'Energy Input: '..(input and fmt(input) or 'n/a'),colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,statusH+3,'Energy Output: '..(output and fmt(output) or 'n/a'),colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,statusH+4,'Transfer Rate: '..(transfer and fmt(transfer) or 'n/a'),colors.white,colors.gray,rightW-2)
+  end
+  if changed.tripped or changed.online or redrawAll then
+    drawText(rightX+1,topH+1,'Safety: CHECKS',colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+2,tripped and '[x] Energy >99%' or '[ ] Energy >99%',tripped and colors.red or colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+3,tripped and 'Redstone: ON' or 'Redstone: OFF',tripped and colors.red or colors.white,colors.gray,rightW-2)
+  end
+  if changed.latest or redrawAll then
+    drawText(rightX+1,topH+5,'Version: '..VERSION,colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+6,'Latest: '..LATEST_VERSION,colors.white,colors.gray,rightW-2)
+  end
+  term.setBackgroundColor(colors.black)
+end
+
+local function handleClick(x,y)
+  for _,b in pairs(buttons) do
+    if x>=b.x and x<b.x+b.w and y>=b.y and y<=b.y+(b.h or 1)-1 then
+      b.fn()
+      prevSnapshot=nil
+      layoutDirty=true
+      draw()
+      return
+    end
+  end
+end
+
+local function inputLoop()
+  while true do
+    local ev,a,b,c=pullEvent()
+    if useMon and ev=='monitor_touch' then
+      handleClick(b,c)
+    elseif not useMon and ev=='mouse_click' then
+      handleClick(b,c)
+    elseif ev=='term_resize' then
+      draw()
+    end
+  end
+end
+
+local function monitorLoop()
+  while true do
+    draw()
+    osSleep(0.05)
+  end
 end
 
 local function versionChecker()
@@ -193,36 +267,51 @@ local function versionChecker()
       return http.get('https://raw.githubusercontent.com/TomtomFH/FissionReactor/refs/heads/main/version.txt',nil,true)
     end)
     if ok and response then
-      local value=response.readAll()
+      local latest=response.readAll()
       response.close()
-      if value then latest=value:gsub('%s+','') end
+      if latest then LATEST_VERSION=latest:gsub('%s+','') end
+    else
+      LATEST_VERSION='UNKNOWN'
     end
+    layoutDirty=true
     draw()
-    sleep(300)
+    osSleep(300)
   end
 end
 
-local function inputLoop()
+local function supervise(name,fn)
   while true do
-    local event,side,x,y=os.pullEvent()
-    if (useMon and event=='monitor_touch') or (not useMon and event=='mouse_click') then
-      if not useMon then side,x,y=nil,x,y end
-      for _,b in pairs(buttons) do
-        if x>=b.x and x<b.x+b.w and y==b.y then b.fn(); break end
-      end
-    elseif event=='term_resize' then
+    local ok,err=pcall(fn)
+    if not ok then
+      pcall(function()
+        term.setBackgroundColor(colors.black)
+        term.setTextColor(colors.red)
+        term.setCursorPos(1,h)
+        term.write((name..' recovering: '..tostring(err)):sub(1,w))
+      end)
       layoutDirty=true
-      draw()
+      prevSnapshot=nil
+      osSleep(2)
+    else
+      osSleep(0.5)
     end
-  end
-end
-
-local function monitorLoop()
-  while true do
-    draw()
-    sleep(0.5)
   end
 end
 
 draw()
-parallel.waitForAny(monitorLoop,inputLoop,versionChecker)
+if parallel and parallel.waitForAny then
+  parallel.waitForAny(
+    function() supervise('Monitor',monitorLoop) end,
+    function() supervise('Input',inputLoop) end,
+    function() supervise('Version check',versionChecker) end
+  )
+else
+  supervise('Monitor',monitorLoop)
+end
+
+setFailsafeRedstone(false)
+term.setBackgroundColor(colors.black)
+term.clear()
+term.setCursorPos(1,1)
+term.setTextColor(colors.white)
+term.write('Induction Matrix UI closed.')
