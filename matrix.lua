@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.6'
+local VERSION = '1.2.7'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -43,6 +43,29 @@ local w, h = term.getSize()
 local layoutDirty = true
 local prevSnapshot = nil
 local safetyTriggered = false
+
+local autoUpdateEnabled = false
+local autoUpdateStarted = false
+if fs and fs.exists and fs.exists('auto_update.txt') then
+  local f = fs.open('auto_update.txt', 'r')
+  if f then
+    autoUpdateEnabled = f.readAll():gsub('%s+', '') == 'true'
+    f.close()
+  end
+end
+
+local function saveAutoUpdate()
+  if not fs or not fs.open then return end
+  local f = fs.open('auto_update.txt', 'w')
+  if f then f.write(autoUpdateEnabled and 'true' or 'false'); f.close() end
+end
+
+local function toggleAutoUpdate()
+  autoUpdateEnabled = not autoUpdateEnabled
+  saveAutoUpdate()
+  layoutDirty = true
+  prevSnapshot = nil
+end
 
 local function findMatrix()
   if not peripheral then return nil end
@@ -157,11 +180,13 @@ local function drawLayout()
   drawText(rightX + 1, topH + 3, 'Redstone: OFF', colors.white, colors.gray, rightW - 2)
   drawText(rightX + 1, topH + 5, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
   drawText(rightX + 1, topH + 6, 'Latest: ' .. LATEST_VERSION, colors.white, colors.gray, rightW - 2)
-  local updateY, rebootY = topH + 8, topH + 9
-  if rebootY > h then updateY, rebootY = h - 2, h - 1 end
+  local updateY, autoY, rebootY = topH + 8, topH + 9, topH + 10
+  if rebootY > h then updateY, autoY, rebootY = h - 3, h - 2, h - 1 end
   add('update', rightX + 1, updateY, rightW - 2, 1, 'UPDATE', runUpdater)
+  add('auto', rightX + 1, autoY, rightW - 2, 1, 'AUTO UPDATE: ' .. (autoUpdateEnabled and 'ON' or 'OFF'), toggleAutoUpdate)
   add('reboot', rightX + 1, rebootY, rightW - 2, 1, 'REBOOT', rebootComputer)
   drawBtn(newButtons.update, nil, colors.blue, colors.white)
+  drawBtn(newButtons.auto, nil, autoUpdateEnabled and colors.green or colors.gray, colors.white)
   drawBtn(newButtons.reboot, nil, colors.red, colors.white)
   buttons = newButtons
   layoutDirty = false
@@ -282,7 +307,14 @@ local function versionChecker()
     if ok and response then
       local latest=response.readAll()
       response.close()
-      if latest then LATEST_VERSION=latest:gsub('%s+','') end
+      if latest then
+        LATEST_VERSION=latest:gsub('%s+','')
+        if autoUpdateEnabled and not autoUpdateStarted and LATEST_VERSION ~= VERSION and LATEST_VERSION ~= '' then
+          autoUpdateStarted = true
+          runUpdater()
+          autoUpdateStarted = false
+        end
+      end
     else
       LATEST_VERSION='UNKNOWN'
     end
