@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.1.7'
+local VERSION = '1.2.0'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -163,7 +163,9 @@ end
 -- Redstone alarm on the top face while a failsafe shutdown is active.
 local function updateFailsafeRedstone()
 	if rs and type(rs.setOutput) == 'function' then
-		pcall(rs.setOutput, 'top', safetyShutdown)
+		for _, side in ipairs(RS_SIDES) do
+			pcall(rs.setOutput, side, safetyShutdown)
+		end
 	end
 end
 
