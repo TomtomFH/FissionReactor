@@ -1,5 +1,5 @@
 -- Induction Matrix display and high-energy failsafe
-local VERSION = '1.2.1'
+local VERSION = '1.2.2'
 local sides = {'top','bottom','left','right','front','back'}
 local rs = _G.rs or _G.redstone
 local peripheral = _G.peripheral
@@ -28,7 +28,9 @@ end
 
 local mon = peripheral.find('monitor') or term
 if mon.setTextScale then mon.setTextScale(0.5) end
-local w, h = mon.getSize()
+local useMon = mon ~= term
+if useMon then term.redirect(mon) end
+local w, h = term.getSize()
 local buttons = {}
 local layoutDirty = true
 local last = {}
@@ -43,23 +45,23 @@ end
 
 local function text(x, y, value, fg, bg, width)
   if y < 1 or y > h then return end
-  mon.setCursorPos(x, y)
-  mon.setTextColor(fg or colors.white)
-  mon.setBackgroundColor(bg or colors.black)
+  term.setCursorPos(x, y)
+  term.setTextColor(fg or colors.white)
+  term.setBackgroundColor(bg or colors.black)
   value = tostring(value or '')
   if width then value = value:sub(1, width) end
-  mon.write(value)
+  term.write(value)
 end
 
 local function button(id, x, y, bw, label, bg, fn)
   if y < 1 or y > h then return end
   buttons[id] = {x=x,y=y,w=bw,fn=fn}
-  mon.setBackgroundColor(bg)
-  mon.setTextColor(colors.white)
-  mon.setCursorPos(x,y)
-  mon.write(string.rep(' ',bw))
-  mon.setCursorPos(x + max(0,floor((bw-#label)/2)),y)
-  mon.write(label:sub(1,bw))
+  term.setBackgroundColor(bg)
+  term.setTextColor(colors.white)
+  term.setCursorPos(x,y)
+  term.write(string.rep(' ',bw))
+  term.setCursorPos(x + max(0,floor((bw-#label)/2)),y)
+  term.write(label:sub(1,bw))
 end
 
 local function runUpdater()
@@ -70,19 +72,19 @@ local function reboot()
 end
 
 local function drawLayout()
-  w,h = mon.getSize()
-  mon.setBackgroundColor(colors.black)
-  mon.clear()
+  w,h = term.getSize()
+  term.setBackgroundColor(colors.black)
+  term.clear()
   local rightW = max(19, floor(w*0.25))
   if w-rightW < 24 then rightW = max(14,w-24) end
   local leftW = w-rightW-1
   local rightX = leftW+2
   for y=1,h do
-    mon.setCursorPos(rightX,y)
-    mon.setBackgroundColor(colors.gray)
-    mon.write(string.rep(' ',rightW))
+    term.setCursorPos(rightX,y)
+    term.setBackgroundColor(colors.gray)
+    term.write(string.rep(' ',rightW))
   end
-  mon.setBackgroundColor(colors.black)
+  term.setBackgroundColor(colors.black)
   text(2,1,'INDUCTION MATRIX',colors.white,colors.black,leftW-2)
   text(2,2,'ENERGY STORAGE',colors.lightGray,colors.black,leftW-2)
   text(rightX+1,1,'',colors.white,colors.gray,rightW-2)
@@ -110,16 +112,16 @@ local function drawBar(x,y,bw,bh,pct)
   pct = math.max(0,math.min(100,tonumber(pct) or 0))
   local filled = floor(bw*pct/100+0.5)
   for row=0,bh-1 do
-    mon.setCursorPos(x,y+row)
-    mon.setBackgroundColor(colors.black)
-    mon.write(string.rep(' ',bw))
+    term.setCursorPos(x,y+row)
+    term.setBackgroundColor(colors.black)
+    term.write(string.rep(' ',bw))
     if filled>0 then
-      mon.setCursorPos(x,y+row)
-      mon.setBackgroundColor(colors.lightGreen)
-      mon.write(string.rep(' ',filled))
+      term.setCursorPos(x,y+row)
+      term.setBackgroundColor(colors.lime)
+      term.write(string.rep(' ',filled))
     end
   end
-  mon.setBackgroundColor(colors.black)
+  term.setBackgroundColor(colors.black)
 end
 
 local function readOptional(obj, method)
@@ -130,7 +132,7 @@ local function readOptional(obj, method)
 end
 
 local function draw()
-  w,h = mon.getSize()
+  w,h = term.getSize()
   if layoutDirty then drawLayout() end
   local rightW = max(19,floor(w*0.25))
   if w-rightW<24 then rightW=max(14,w-24) end
@@ -165,7 +167,7 @@ local function draw()
   local barY=6
   local barH=max(3,h-9)
   drawBar(2,barY,leftW-2,barH,valid and pct or 0)
-  text(2,barY+barH+1,valid and (string.format('%.2f%% FULL',pct)) or 'NO MATRIX DATA',valid and (tripped and colors.red or colors.lightGreen) or colors.red,colors.black,leftW-2)
+  text(2,barY+barH+1,valid and (string.format('%.2f%% FULL',pct)) or 'NO MATRIX DATA',valid and (tripped and colors.red or colors.lime) or colors.red,colors.black,leftW-2)
 
   text(rightX+1,statusH+1,'Energy Input:',colors.white,colors.gray,rightW-2)
   text(rightX+1,statusH+2,input and (fmt(input)..' FE/t') or 'n/a',colors.white,colors.gray,rightW-2)
@@ -181,7 +183,7 @@ local function draw()
   text(rightX+1,safetyY+5,'Latest: '..latest,colors.white,colors.gray,rightW-2)
   button('update',rightX+1,h-2,rightW-2,'UPDATE',colors.blue,runUpdater)
   button('reboot',rightX+1,h-1,rightW-2,'REBOOT',colors.red,reboot)
-  mon.setBackgroundColor(colors.black)
+  term.setBackgroundColor(colors.black)
 end
 
 local function versionChecker()
@@ -203,7 +205,8 @@ end
 local function inputLoop()
   while true do
     local event,side,x,y=os.pullEvent()
-    if event=='monitor_touch' then
+    if (useMon and event=='monitor_touch') or (not useMon and event=='mouse_click') then
+      if not useMon then side,x,y=nil,x,y end
       for _,b in pairs(buttons) do
         if x>=b.x and x<b.x+b.w and y==b.y then b.fn(); break end
       end
