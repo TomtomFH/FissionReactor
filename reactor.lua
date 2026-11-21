@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.2.9'
+local VERSION = '1.3.0'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -600,9 +600,19 @@ local function versionChecker()
 		if latest then
 			LATEST_VERSION = latest
 			if autoUpdateEnabled and not autoUpdateStarted and LATEST_VERSION ~= VERSION and LATEST_VERSION ~= '' then
-				autoUpdateStarted = true
-				runUpdater()
-				autoUpdateStarted = false
+				local attempted = ''
+				if fs and fs.exists and fs.exists('auto_update_attempted.txt') then
+					local f = fs.open('auto_update_attempted.txt', 'r')
+					if f then attempted = f.readAll():gsub('%s+', ''); f.close() end
+				end
+				if attempted ~= LATEST_VERSION then
+					if fs and fs.open then
+						local f = fs.open('auto_update_attempted.txt', 'w')
+						if f then f.write(LATEST_VERSION); f.close() end
+					end
+					autoUpdateStarted = true
+					runUpdater()
+				end
 			end
 		else
 			LATEST_VERSION = 'UNKNOWN'
