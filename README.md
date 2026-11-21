@@ -1,54 +1,39 @@
-# Fission Reactor Control System
+# Fission Reactor / Induction Matrix Control
 
-A ComputerCraft / CC:Tweaked program for monitoring and controlling a Mekanism Fission Reactor.
+A CC:Tweaked controller that detects a connected Mekanism multiblock and installs the matching display.
 
-## Features
+## Install
 
-- Live reactor information and resource levels
-- ONLINE / OFFLINE reactor control
-- Automatic safety shutdowns
-- Automatic recovery countdown after reactor damage clears
-- Red warning text for active safety conditions
-- Automatic update checker and updater
+1. Connect the Fission Reactor Logic Adapter or an Induction Port to the computer through Wired Modems and Networking Cable.
+2. Optionally connect an Advanced Monitor.
+3. Run:
+   ```lua
+   wget https://ccfr.moma.dev install
+   install
+   ```
+4. The installer detects the connected multiblock and installs its controller as `startup.lua`.
+5. Reboot the computer.
 
-## Setup
+If both a reactor and matrix are connected, the installer currently prioritizes the reactor.
 
-- Build your Mekanism Fission Reactor.
-- Attach a **Logic Adapter** to the reactor.
-- Place an **Advanced Computer** nearby.
-- Connect the Logic Adapter to the computer using **Wired Modems and Networking Cable**.
-- Right-click the Wired Modems to activate them.
-- (Optional) Connect an Advanced Monitor to the computer. A **5-wide by 3-high** monitor setup is recommended.
-- Turn on the computer and open its terminal.
-- Run these commands:
+## Controllers
 
-  ```lua
-  wget https://ccfr.moma.dev install
-  install
-  ```
-
-- The installer automatically installs the **wired Display Computer** version.
-- When installation finishes, reboot the computer with `Ctrl+R`.
-- The reactor control screen should start automatically.
+- **Fission Reactor:** existing reactor display and safety controls.
+- **Induction Matrix:** live energy, capacity and fill percentage display. Above 99% full, the failsafe activates redstone output on all six sides; at or below 99%, it clears.
 
 ## Updating
 
-- Press **UPDATE** in the reactor control screen.
-- The computer downloads the latest files and reboots when the update finishes.
+Use the controller's UPDATE button where available, or run `update`. The updater redetects the connected multiblock, installs the matching controller, preserves `config.lua`, and reboots.
 
-## Safety Limits
+## Reactor safety limits
 
 - Coolant below 10%: automatic shutdown.
 - Heated coolant above 99%: automatic shutdown.
 - Waste above 99%: automatic shutdown.
-- Any reactor damage above 0%: emergency shutdown. Once damage returns to 0%, a 60-second recovery countdown begins before automatic restart, provided the other safety readings are safe.
+- Any reactor damage above 0%: emergency shutdown and recovery countdown.
 
-## Temperature
-
-- Temperature is shown in Celsius by default.
-- You can enable Fahrenheit by setting `TEMP_IN_F = true` in `config.lua`.
+The reactor failsafe outputs redstone on all six sides while shutdown is active. The Induction Matrix failsafe outputs redstone on all six sides while its energy level is above 99%.
 
 ## Credits
 
-- Original project and program by **MohammedMMC**: [github.com/MohammedMMC/FissionReactor-CC](https://github.com/MohammedMMC/FissionReactor-CC)
-- This repository contains subsequent modifications and additions.
+Original project by **MohammedMMC**: https://github.com/MohammedMMC/FissionReactor-CC
