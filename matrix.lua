@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.8'
+local VERSION = '1.2.9'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
