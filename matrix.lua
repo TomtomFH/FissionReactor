@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.3.2'
+local VERSION = '1.3.3'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -171,25 +171,29 @@ end
 local function drawGradientBar(x, y, width, height, pct)
   pct = math.max(0, math.min(100, tonumber(pct) or 0))
   local filled = floor(width * pct / 100 + 0.5)
+  -- Horizontal multi-colour gradient, reversed from the previous scale:
+  -- green at the left, then lime, yellow, orange and red at the right.
   local bands = {
-    {0, 20, colors.red},
-    {20, 40, colors.orange},
-    {40, 60, colors.yellow},
-    {60, 80, colors.lime},
-    {80, 100, colors.green}
+    {colors.green, 0.00, 0.20},
+    {colors.lime, 0.20, 0.40},
+    {colors.yellow, 0.40, 0.60},
+    {colors.orange, 0.60, 0.80},
+    {colors.red, 0.80, 1.00}
   }
   for row = 0, height - 1 do
-    term.setCursorPos(x, y + row)
-    term.setBackgroundColor(colors.black)
-    term.write(string.rep(' ', width))
-    if filled > 0 then
-      local color = colors.green
-      for _, band in ipairs(bands) do
-        if pct <= band[2] then color = band[3]; break end
+    for col = 0, width - 1 do
+      term.setCursorPos(x + col, y + row)
+      if col < filled then
+        local position = (col + 0.5) / math.max(1, width)
+        local color = colors.red
+        for _, band in ipairs(bands) do
+          if position <= band[3] then color = band[1]; break end
+        end
+        term.setBackgroundColor(color)
+      else
+        term.setBackgroundColor(colors.black)
       end
-      term.setCursorPos(x, y + row)
-      term.setBackgroundColor(color)
-      term.write(string.rep(' ', filled))
+      term.write(' ')
     end
   end
   term.setBackgroundColor(colors.black)
@@ -309,7 +313,12 @@ local function draw()
     drawText(2, y, 'Input', colors.white, colors.black, leftW - 3)
     local value = input and transfer and (fmt(input) .. ' / ' .. fmt(transfer) .. ' FE/t') or 'n/a'
     drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
-    drawGradientBar(1, y + 1, leftW, max(1, boxH - 1), inputPct)
+    -- Keep the input-bar area as an intentionally empty row, matching the requested layout.
+    for row = 1, max(1, boxH - 1) do
+      term.setCursorPos(1, y + row)
+      term.setBackgroundColor(colors.black)
+      term.write(string.rep(' ', leftW))
+    end
   end
   if changed.output or changed.transfer or changed.online or redrawAll then
     local y = boxH * 2 + 1
