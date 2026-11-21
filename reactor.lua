@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.2.8'
+local VERSION = '1.2.9'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -109,6 +109,29 @@ local newButtons = {}
 local w, h = term.getSize()
 
 local safetyShutdown = false
+
+local autoUpdateEnabled = false
+local autoUpdateStarted = false
+if fs and fs.exists and fs.exists('auto_update.txt') then
+  local f = fs.open('auto_update.txt', 'r')
+  if f then
+    autoUpdateEnabled = f.readAll():gsub('%s+', '') == 'true'
+    f.close()
+  end
+end
+
+local function saveAutoUpdate()
+  if not fs or not fs.open then return end
+  local f = fs.open('auto_update.txt', 'w')
+  if f then f.write(autoUpdateEnabled and 'true' or 'false'); f.close() end
+end
+
+local function toggleAutoUpdate()
+  autoUpdateEnabled = not autoUpdateEnabled
+  saveAutoUpdate()
+  layoutDirty = true
+  prevSnapshot = nil
+end
 local safetyHighDanger = false
 local safetyLastReason = nil
 local damageRestartAt = nil
@@ -350,14 +373,18 @@ local function drawLayout()
 	drawText(rightX + 1, topH + 8, 'Latest: ' .. LATEST_VERSION, colors.white, colors.gray, rightW - 2)
 
 	local updateY = topH + 10
-	local rebootY = topH + 11
+	local autoY = topH + 11
+	local rebootY = topH + 12
 	if rebootY > h then
-		updateY = h - 2
+		updateY = h - 3
+		autoY = h - 2
 		rebootY = h
 	end
 	add('update', rightX + 1, updateY, rightW - 2, 1, runUpdater)
+	add('auto', rightX + 1, autoY, rightW - 2, 1, toggleAutoUpdate)
 	add('reboot', rightX + 1, rebootY, rightW - 2, 1, rebootComputer)
 	drawBtn({x=rightX + 1, y=updateY, w=rightW - 2, h=1, l='UPDATE'}, nil, colors.blue, colors.white)
+	drawBtn({x=rightX + 1, y=autoY, w=rightW - 2, h=1, l='AUTO UPDATE: ' .. (autoUpdateEnabled and 'ON' or 'OFF')}, nil, autoUpdateEnabled and colors.green or colors.gray, colors.white)
 	drawBtn({x=rightX + 1, y=rebootY, w=rightW - 2, h=1, l='REBOOT'}, nil, colors.red, colors.white)
 	buttons = newButtons
 	layoutDirty = false
@@ -572,6 +599,11 @@ local function versionChecker()
 		end
 		if latest then
 			LATEST_VERSION = latest
+			if autoUpdateEnabled and not autoUpdateStarted and LATEST_VERSION ~= VERSION and LATEST_VERSION ~= '' then
+				autoUpdateStarted = true
+				runUpdater()
+				autoUpdateStarted = false
+			end
 		else
 			LATEST_VERSION = 'UNKNOWN'
 		end
