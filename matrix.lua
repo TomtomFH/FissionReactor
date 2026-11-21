@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.3.3'
+local VERSION = '1.3.4'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -171,25 +171,60 @@ end
 local function drawGradientBar(x, y, width, height, pct)
   pct = math.max(0, math.min(100, tonumber(pct) or 0))
   local filled = floor(width * pct / 100 + 0.5)
-  -- Horizontal multi-colour gradient, reversed from the previous scale:
-  -- green at the left, then lime, yellow, orange and red at the right.
-  local bands = {
-    {colors.green, 0.00, 0.20},
-    {colors.lime, 0.20, 0.40},
-    {colors.yellow, 0.40, 0.60},
-    {colors.orange, 0.60, 0.80},
-    {colors.red, 0.80, 1.00}
+
+  -- Smooth green-to-red RGB interpolation, quantized to the monitor's
+  -- available 16-colour palette (CC:Tweaked terminal colours are palette-based).
+  local stops = {
+    {0.00, 0x00, 0xD9, 0x55},
+    {0.25, 0x80, 0xF0, 0x30},
+    {0.50, 0xF0, 0xF0, 0x20},
+    {0.75, 0xFF, 0xA0, 0x20},
+    {1.00, 0xF0, 0x35, 0x25}
   }
+  local palette = {}
+  local paletteGetter = mon and mon.getPaletteColor or (term and term.getPaletteColor)
+  for i = 0, 15 do
+    local color = 2 ^ i
+    local r, g, b
+    if paletteGetter then
+      local ok, pr, pg, pb = pcall(paletteGetter, color)
+      if ok and type(pr) == 'number' then r, g, b = pr * 255, pg * 255, pb * 255 end
+    end
+    if not r then
+      local defaults = {
+        [0]={240,240,240}, [1]={242,178,51}, [2]={229,127,216}, [3]={153,178,242},
+        [4]={222,222,108}, [5]={127,204,25}, [6]={242,178,204}, [7]={76,76,76},
+        [8]={153,153,153}, [9]={76,153,178}, [10]={178,102,229}, [11]={51,102,204},
+        [12]={127,102,76}, [13]={87,166,78}, [14]={204,76,76}, [15]={25,25,25}
+      }
+      r, g, b = table.unpack(defaults[i])
+    end
+    palette[#palette + 1] = {color=color, r=r, g=g, b=b}
+  end
+
+  local function gradientRGB(position)
+    local a, b = stops[1], stops[#stops]
+    for i = 1, #stops - 1 do
+      if position <= stops[i + 1][1] then a, b = stops[i], stops[i + 1]; break end
+    end
+    local t = (position - a[1]) / (b[1] - a[1])
+    return a[2] + (b[2] - a[2]) * t,
+           a[3] + (b[3] - a[3]) * t,
+           a[4] + (b[4] - a[4]) * t
+  end
+
   for row = 0, height - 1 do
     for col = 0, width - 1 do
       term.setCursorPos(x + col, y + row)
       if col < filled then
-        local position = (col + 0.5) / math.max(1, width)
-        local color = colors.red
-        for _, band in ipairs(bands) do
-          if position <= band[3] then color = band[1]; break end
+        local r, g, b = gradientRGB((col + 0.5) / math.max(1, width))
+        local best, bestDistance = colors.green, math.huge
+        for _, p in ipairs(palette) do
+          local dr, dg, db = r - p.r, g - p.g, b - p.b
+          local distance = dr * dr + dg * dg + db * db
+          if distance < bestDistance then best, bestDistance = p.color, distance end
         end
-        term.setBackgroundColor(color)
+        term.setBackgroundColor(best)
       else
         term.setBackgroundColor(colors.black)
       end
