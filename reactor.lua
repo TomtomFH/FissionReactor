@@ -132,10 +132,19 @@ local function saveSafetySettings()
 		SAFETY_WASTE_ENABLED = safetyEnabled.waste,
 	}
 	for key, value in pairs(values) do
-		local replacement = key .. ' = ' .. tostring(value)
-		local updated, count = content:gsub(key .. '%s*=%s*%a+', replacement, 1)
-		if count == 0 then
-			content = content:gsub('(%s*})%s*
+		content = content:gsub(key .. '%s*=%s*%a+', key .. ' = ' .. tostring(value), 1)
+	end
+	file = fs.open('config.lua', 'w')
+	if file then file.write(content); file.close() end
+end
+
+local function toggleSafety(key)
+	safetyEnabled[key] = not safetyEnabled[key]
+	saveSafetySettings()
+	layoutDirty = true
+	prevSnapshot = nil
+end
+
 -- Fixed safety limits: intentionally not configurable from config.lua or the UI.
 local SAFETY_COOLANT_MIN = 10
 local SAFETY_HEATED_MAX = 99
