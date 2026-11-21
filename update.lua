@@ -1,51 +1,61 @@
--- Fission Reactor updater
+-- Fission Reactor clean updater
 -- Run with: update
+-- Reinstalls the wired display computer files and preserves config.lua only.
+
 local BASE = "https://raw.githubusercontent.com/TomtomFH/FissionReactor/refs/heads/main/"
 
-local function download(file)
-	print("Updating " .. file .. "...")
-	-- Use the complete URL in one command string for CC:Tweaked's wget.
-	if fs.exists(file) then
-		fs.delete(file)
-	end
-	local ok = shell.run("wget " .. BASE .. file .. " " .. file)
-	if not ok or not fs.exists(file) then
-		error("Failed to download " .. file .. ". Check the internet connection and try again.")
+local function downloadFresh(file)
+	local temp = file .. ".new"
+	if fs.exists(temp) then fs.delete(temp) end
+	print("Downloading " .. file .. "...")
+	local ok = shell.run("wget " .. BASE .. file .. " " .. temp)
+	if not ok or not fs.exists(temp) then
+		error("Failed to download " .. file .. ". Existing installation has been left in place.")
 	end
 end
 
--- Detect the installed role before replacing startup.lua.
-local bridgeMode = false
-if fs.exists("startup.lua") then
-	local h = fs.open("startup.lua", "r")
-	if h then
-		local oldStartup = h.readAll()
-		h.close()
-		bridgeMode = oldStartup:find("Reactor Modem Bridge", 1, true) ~= nil
-			or oldStartup:find("reactor-modem.lua", 1, true) ~= nil
-	end
-end
+local files = {
+	"version.txt",
+	"functions.lua",
+	"reactor.lua",
+	"reactor-modem.lua",
+	"update.lua"
+}
 
-download("version.txt")
-download("functions.lua")
-download("reactor.lua")
-download("reactor-modem.lua")
-
--- Remove the existing startup file first; fs.copy does not overwrite it.
-if fs.exists("startup.lua") then
-	fs.delete("startup.lua")
-end
-if bridgeMode then
-	fs.copy("reactor-modem.lua", "startup.lua")
-else
-	fs.copy("reactor.lua", "startup.lua")
+-- Download and verify all new files before replacing the working installation.
+for _, file in ipairs(files) do
+	downloadFresh(file)
 end
 
 print("")
+print("Installing fresh wired display computer...")
+
+-- Remove known program files, but never touch config.lua or unrelated user files.
+local oldFiles = {
+	"startup.lua",
+	"functions.lua",
+	"reactor.lua",
+	"reactor-modem.lua",
+	"version.txt",
+	"update.lua",
+	"install.lua"
+}
+for _, file in ipairs(oldFiles) do
+	if fs.exists(file) then fs.delete(file) end
+end
+
+for _, file in ipairs(files) do
+	fs.move(file .. ".new", file)
+end
+
+-- This project now supports wired Display Computer mode only.
+fs.copy("reactor.lua", "startup.lua")
+
+print("")
 term.setTextColor(colors.lime)
-print("Fission Reactor updated successfully!")
+print("Fresh installation completed!")
 term.setTextColor(colors.white)
-print("Your config.lua was left unchanged.")
+print("config.lua was preserved.")
 print("Rebooting in 3 seconds...")
 sleep(3)
 os.reboot()
