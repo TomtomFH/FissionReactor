@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.3'
+local VERSION = '1.2.4'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -205,11 +205,14 @@ local function draw()
     local label = matrix and 'ONLINE' or 'OFFLINE'
     drawBtn({x=rightX,y=1,w=rightW,h=statusH,l=label},nil,bg,colors.white)
   end
+  local boxH = floor(h / 4)
   if changed.energy or changed.capacity or changed.pct or changed.online or redrawAll then
-    drawText(2,1,'Energy',colors.white,colors.black,leftW-2)
-    local value = valid and (fmt(energy)..' / '..fmt(capacity)..' ('..fmtStr('%d%%',floor(pct+0.5))..')') or 'Waiting for Induction Matrix...'
-    drawText(2,2,value,colors.white,colors.black,leftW-2)
-    drawBar(1,3,leftW,max(1,h-3),valid and pct or 0,colors.lime)
+    local y = 1
+    local barHeight = max(1, boxH - 1)
+    drawText(2, y, 'Energy', colors.white, colors.black, leftW - 3)
+    local value = valid and (fmt(energy) .. ' / ' .. fmt(capacity) .. ' (' .. fmtStr('%d%%', floor(pct + 0.5)) .. ')') or 'n/a'
+    drawText(max(2, leftW - #value - 1), y, value, colors.white, colors.black, leftW)
+    drawBar(1, y + 1, leftW, barHeight, valid and pct or 0, colors.lime)
   end
   if changed.input or changed.output or changed.transfer or changed.online or redrawAll then
     drawText(rightX+1,statusH+2,'Energy Input: '..(input and fmt(input) or 'n/a'),colors.white,colors.gray,rightW-2)
