@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.2.9'
+local VERSION = '1.3.0'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -50,6 +50,25 @@ local w, h = term.getSize()
 local layoutDirty = true
 local prevSnapshot = nil
 local safetyTriggered = false
+
+local energySafetyEnabled = true
+if fs and fs.exists and fs.exists('matrix_safety.txt') then
+  local f = fs.open('matrix_safety.txt', 'r')
+  if f then
+    energySafetyEnabled = f.readAll():gsub('%s+', '') ~= 'false'
+    f.close()
+  end
+end
+
+local function toggleEnergySafety()
+  energySafetyEnabled = not energySafetyEnabled
+  if fs and fs.open then
+    local f = fs.open('matrix_safety.txt', 'w')
+    if f then f.write(energySafetyEnabled and 'true' or 'false'); f.close() end
+  end
+  layoutDirty = true
+  prevSnapshot = nil
+end
 
 local autoUpdateEnabled = false
 local autoUpdateStarted = false
@@ -183,8 +202,7 @@ local function drawLayout()
   drawText(rightX + 1, statusH + 3, 'Energy Output:', colors.white, colors.gray, rightW - 2)
   drawText(rightX + 1, statusH + 4, 'Transfer Rate:', colors.white, colors.gray, rightW - 2)
   drawText(rightX + 1, topH + 1, 'Safety: CHECKS', colors.white, colors.gray, rightW - 2)
-  drawText(rightX + 1, topH + 2, '[ ] Energy >99%', colors.white, colors.gray, rightW - 2)
-  drawText(rightX + 1, topH + 3, 'Redstone: OFF', colors.white, colors.gray, rightW - 2)
+  add('energy_safety', rightX + 1, topH + 2, rightW - 2, 1, '[x] Energy >99%', toggleEnergySafety)
   drawText(rightX + 1, topH + 5, 'Version: ' .. VERSION, colors.white, colors.gray, rightW - 2)
   drawText(rightX + 1, topH + 6, 'Latest: ' .. LATEST_VERSION, colors.white, colors.gray, rightW - 2)
   local updateY, autoY, rebootY = topH + 8, topH + 9, topH + 10
@@ -226,7 +244,7 @@ local function draw()
       valid = true
     end
   end
-  local tripped = valid and pct > 99
+  local tripped = energySafetyEnabled and valid and pct > 99
   safetyTriggered = tripped
   setFailsafeRedstone(tripped)
   local snap = {energy=energy,capacity=capacity,input=input,output=output,transfer=transfer,pct=pct,online=matrix~=nil,name=name,w=w,h=h,tripped=tripped,latest=LATEST_VERSION}
@@ -264,9 +282,10 @@ local function draw()
   end
   if changed.tripped or changed.online or redrawAll then
     drawText(rightX+1,topH+1,'Safety: CHECKS',colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,topH+2,'[x] Energy >99%',colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,topH+3,' ',colors.white,colors.gray,rightW-2)
-    drawText(rightX+1,topH+2,'[x] Energy >99%',tripped and colors.red or colors.white,colors.gray,rightW-2)
+    drawText(rightX+1,topH+2,energySafetyEnabled and '[x]' or '[ ]',energySafetyEnabled and colors.lime or colors.white,colors.gray,3)
+    drawText(rightX+4,topH+2,'Energy >99%',not energySafetyEnabled and colors.lightGray or (tripped and colors.red or colors.white),colors.gray,rightW-5)
+    -- Clear the former Redstone row completely so no leftover characters remain.
+    drawText(rightX+1,topH+3,string.rep(' ',rightW-2),colors.white,colors.gray,rightW-2)
   end
   if changed.latest or redrawAll then
     drawText(rightX+1,topH+5,'Version: '..VERSION,colors.white,colors.gray,rightW-2)
@@ -319,9 +338,19 @@ local function versionChecker()
       if latest then
         LATEST_VERSION=latest:gsub('%s+','')
         if autoUpdateEnabled and not autoUpdateStarted and LATEST_VERSION ~= VERSION and LATEST_VERSION ~= '' then
-          autoUpdateStarted = true
-          runUpdater()
-          autoUpdateStarted = false
+          local attempted = ''
+          if fs and fs.exists and fs.exists('auto_update_attempted.txt') then
+            local f = fs.open('auto_update_attempted.txt', 'r')
+            if f then attempted = f.readAll():gsub('%s+', ''); f.close() end
+          end
+          if attempted ~= LATEST_VERSION then
+            if fs and fs.open then
+              local f = fs.open('auto_update_attempted.txt', 'w')
+              if f then f.write(LATEST_VERSION); f.close() end
+            end
+            autoUpdateStarted = true
+            runUpdater()
+          end
         end
       end
     else
