@@ -1,5 +1,5 @@
 -- Induction Matrix monitor and high-energy failsafe
-local VERSION = '1.3.7'
+local VERSION = '1.3.8'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -117,7 +117,12 @@ local function fmt(n)
   rounded = rounded:gsub('0+$', ''):gsub('%.$', '')
   local whole, fraction = rounded:match('^(%d+)%.?(%d*)$')
   if not whole then return tostring(n) end
-  whole = whole:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
+  local grouped = ''
+  while #whole > 3 do
+    grouped = ',' .. whole:sub(-3) .. grouped
+    whole = whole:sub(1, -4)
+  end
+  whole = whole .. grouped
   return (n < 0 and '-' or '') .. whole .. (fraction ~= '' and ('.' .. fraction) or '')
 end
 
