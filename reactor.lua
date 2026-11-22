@@ -4,7 +4,7 @@ if not ok or type(config) ~= 'table' then config = {} end
 local IS_WIRELESS = config.IS_WIRELESS == true
 local MODEM_CHANNEL = tonumber(config.MODEM_CHANNEL) or 42
 local TEMP_IN_F = config.TEMP_IN_F == true -- default Celsius
-local VERSION = '1.3.7'
+local VERSION = '1.3.8'
 local LATEST_VERSION = 'CHECKING'
 
 local term = _G.term
@@ -222,7 +222,12 @@ local function fmt(n)
 	rounded = rounded:gsub('0+$', ''):gsub('%.$', '')
 	local whole, fraction = rounded:match('^(%d+)%.?(%d*)$')
 	if not whole then return tostring(n) end
-	whole = whole:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
+	local grouped = ''
+	while #whole > 3 do
+		grouped = ',' .. whole:sub(-3) .. grouped
+		whole = whole:sub(1, -4)
+	end
+	whole = whole .. grouped
 	local sign = n < 0 and '-' or ''
 	return sign .. whole .. (fraction ~= '' and ('.' .. fraction) or '')
 end
